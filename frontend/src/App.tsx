@@ -1,11 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
-  Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Bell, Building2,
-  CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
-  CircleHelp, Clock3, Compass, Download, FileText, Filter, Gauge, Home, Lightbulb,
-  Menu, MessageCircle, MoreHorizontal, Paperclip, Plus, Search, Send, Settings,
-  ShieldAlert, SlidersHorizontal, Sparkles, TrendingDown, TrendingUp, UploadCloud,
-  Wallet, X, Zap,
+  Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Bell,
+  CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Compass,
+  FileText, Filter, Gauge, Home, Lightbulb, Menu, MoreHorizontal, Paperclip,
+  Plus, Search, Send, Settings, ShieldAlert, SlidersHorizontal, Sparkles,
+  TrendingDown, TrendingUp, UploadCloud, Wallet, X,
 } from "lucide-react";
 import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -90,7 +89,7 @@ function Header({ page, onMenu }: { page: Page; onMenu: () => void }) {
   </header>;
 }
 
-function PageIntro({ eyebrow, title, description, action }: { eyebrow?: string; title: string; description: string; action?: React.ReactNode }) {
+function PageIntro({ eyebrow, title, description, action }: { eyebrow?: string; title: string; description: string; action?: ReactNode }) {
   return <div className="page-intro"><div><div className="eyebrow">{eyebrow || "YOUR BUSINESS, IN FOCUS"}</div><h1>{title}</h1><p>{description}</p></div>{action && <div className="intro-action">{action}</div>}</div>;
 }
 
@@ -114,7 +113,7 @@ function CashFlowChart({ detailed = false }: { detailed?: boolean }) {
   </div>;
 }
 
-function SectionCard({ title, subtitle, action, children, className = "" }: { title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
+function SectionCard({ title, subtitle, action, children, className = "" }: { title: string; subtitle?: string; action?: ReactNode; children: ReactNode; className?: string }) {
   return <section className={`section-card ${className}`}><div className="section-heading"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{action}</div>{children}</section>;
 }
 
