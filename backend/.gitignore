@@ -1,0 +1,24 @@
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyc
+
+# Secrets - never commit these (the example file is safe to commit)
+.env
+.env.*
+!.env.example
+
+# Local SQLite databases
+*.db
+*.sqlite3
+
+# Test / tooling cache
+.pytest_cache/
+
+# Uploaded CSV / invoice files
+uploads/

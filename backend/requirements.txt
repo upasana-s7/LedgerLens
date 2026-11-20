@@ -1,0 +1,27 @@
+# LedgerLens backend dependencies (Stage 1)
+# Install with:  py -m pip install -r requirements.txt   (Windows)
+#                python3 -m pip install -r requirements.txt   (Mac/Linux)
+
+# Web framework + ASGI server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# Settings / validation
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+python-dotenv>=1.0.1
+
+# Data layer (used from Stage 2 onwards)
+SQLAlchemy>=2.0.30
+pandas>=2.2.0
+numpy>=1.26.0
+
+# File uploads (CSV / invoice images)
+python-multipart>=0.0.9
+
+# AI explanations (Stage 8). Only explains numbers, never calculates them.
+google-genai>=0.3.0
+
+# Tests
+pytest>=8.2.0
+httpx>=0.27.0
