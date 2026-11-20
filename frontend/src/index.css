@@ -306,3 +306,106 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .filter-tabs { flex:1; }
   .filter-tabs button { flex:1; }
 }
+
+/* Accessibility and readability pass — LedgerLens */
+:root {
+  --color-muted: #68756d;
+}
+body {
+  font-size: 14px;
+  line-height: 1.55;
+}
+.brand-name { font-size: 18px; }
+.brand-tagline { font-size: 12px; }
+.workspace-copy strong, .profile-copy strong { font-size: 13px; }
+.workspace-copy span, .profile-copy span { font-size: 12px; }
+.nav-label { font-size: 10px; }
+.nav-item { font-size: 14px; padding: 12px 12px; }
+.nav-count { font-size: 11px; }
+.help-card strong { font-size: 13px; }
+.help-card p { font-size: 12px; line-height: 1.65; }
+.help-card button { font-size: 12px; }
+.breadcrumb { font-size: 12px; }
+.period-pill { font-size: 12px; }
+.eyebrow { font-size: 10px; }
+.page-intro p { font-size: 14px; line-height: 1.65; }
+.button { font-size: 13px; min-height: 40px; }
+.button-small { min-height: 34px; font-size: 12px; }
+.demo-notice { font-size: 11px; line-height: 1.5; }
+.metric-top { font-size: 12px; }
+.metric-foot { font-size: 11px; line-height: 1.5; }
+.metric-value { font-size: 26px; }
+.section-heading h2 { font-size: 15px; }
+.section-heading p { font-size: 12px; line-height: 1.5; }
+.text-action { font-size: 12px; }
+.chart-legend { font-size: 11px; }
+.chart-insight p { font-size: 12px; line-height: 1.65; }
+.cfo-intro strong { font-size: 12px; }
+.cfo-intro span { font-size: 11px; }
+.risk-tag { font-size: 10px; }
+.cfo-highlight p { font-size: 12px; line-height: 1.7; }
+.cfo-foot { font-size: 10px; line-height: 1.5; }
+.data-table th { font-size: 10px; }
+.data-table td { font-size: 12px; line-height: 1.5; }
+.transaction-name strong { font-size: 12px; }
+.transaction-name small { font-size: 10px; }
+.nav-item, .button, .text-action, .filter-tabs button { letter-spacing: 0; }
+.risk-item strong { font-size: 12px; }
+.risk-item span { font-size: 11px; line-height: 1.5; }
+.app-footer { font-size: 11px; }
+.search-box input { font-size: 12px; }
+.filter-tabs button { font-size: 11px; }
+.empty-state { font-size: 13px; }
+.form-grid label { font-size: 12px; }
+.form-grid input, .form-grid select { height: 40px; font-size: 13px; }
+.inline-note { font-size: 12px; line-height: 1.65; }
+.commitment-row { font-size: 12px; }
+.commitment-row strong { font-size: 13px; }
+.commitment-row small { font-size: 11px; }
+.assumption-list { font-size: 12px; line-height: 2; }
+.scenario-label { font-size: 13px; }
+.scenario-label > strong { font-size: 16px; }
+.range-labels { font-size: 11px; }
+.scenario-summary div { font-size: 12px; }
+.scenario-summary strong { font-size: 12px; }
+.scenario-result > p { font-size: 13px; line-height: 1.7; }
+.result-foot { font-size: 10px; line-height: 1.6; }
+.verdict-positive, .verdict-caution { font-size: 11px; }
+.upload-selected { font-size: 12px; }
+.invoice-main strong, .receivable-client strong { font-size: 12px; }
+.invoice-main span, .receivable-client span { font-size: 11px; }
+.invoice-amount { font-size: 12px; }
+.status-pill { font-size: 10px; }
+.risk-summary strong { font-size: 14px; }
+.risk-summary span { font-size: 11px; }
+.body-copy { font-size: 12px; line-height: 1.7; }
+.risk-detail { font-size: 11px; line-height: 1.5; }
+.risk-detail strong { font-size: 12px; }
+.chat-header strong { font-size: 13px; }
+.chat-header span { font-size: 11px; }
+.message-bubble { font-size: 13px; line-height: 1.7; }
+.chat-input-row input { font-size: 13px; }
+.evidence-note p { font-size: 12px; line-height: 1.65; }
+.evidence-note strong { font-size: 13px; }
+.question-list button, .suggestion-row button { font-size: 12px; }
+.muted-text { font-size: 12px; }
+:focus-visible {
+  outline: 3px solid #9ab5a2;
+  outline-offset: 2px;
+}
+@media (max-width: 900px) {
+  .sidebar { font-size: 14px; }
+  .page-container { padding: 28px 24px 22px; }
+  .topbar { padding: 0 24px; }
+}
+@media (max-width: 600px) {
+  .page-container { padding: 22px 16px 20px; }
+  .topbar { padding: 0 16px; }
+  .page-intro p { font-size: 13px; }
+  .metric-value { font-size: 23px; }
+  .section-card { padding: 16px; }
+  .data-table th { font-size: 9px; }
+  .data-table td { font-size: 11px; }
+  .message-bubble { font-size: 12px; }
+}
+
