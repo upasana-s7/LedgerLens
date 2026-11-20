@@ -6,10 +6,14 @@ Run it from the backend/ folder:
 Then open http://127.0.0.1:8000/docs for interactive API documentation.
 """
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.database import init_db
+from app.seed.seed_data import seed_if_empty
 from app.routers import (
     cashflow,
     copilot,
@@ -22,9 +26,24 @@ from app.routers import (
     transactions,
 )
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Run once when the server starts, and once when it shuts down.
+
+    On the way up we create any missing tables and, if AUTO_SEED is on, fill
+    an empty database with the synthetic demo data. Seeding is skipped when
+    the database already holds data, so restarts never duplicate rows.
+    """
+    init_db()
+    if settings.AUTO_SEED:
+        seed_if_empty()
+    yield
+
+
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.VERSION,
+    lifespan=lifespan,
     description=(
         "AI financial decision intelligence for Indian SMBs. "
         "Sample business: Bloom & Bean (fictional, Bengaluru). "

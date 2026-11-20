@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     # A fixed "today" so every demo run produces the same numbers.
     AS_OF_DATE: str = "2026-11-19"
 
+    # When true, the app fills an empty database with the synthetic Bloom &
+    # Bean dataset on startup. It never touches a database that already has
+    # data, so restarts are safe. Set to false to start with an empty DB.
+    AUTO_SEED: bool = True
+
     # --- CORS --------------------------------------------------------------
     # The Vite dev server runs on 5173 and `vite preview` on 4173.
     CORS_ORIGINS: list[str] = [

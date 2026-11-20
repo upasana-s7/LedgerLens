@@ -8,9 +8,10 @@ English.
 The demo business is **Bloom & Bean**, a small café in Bengaluru. **All sample
 data is fictional.**
 
-> **Stage 1 (this commit):** the project skeleton — settings, CORS, every API
-> route stubbed with a clear `501`, tests, and the agreed API contract.
-> Database, finance logic and Gemini come in later stages.
+> **Stage 2 (this commit):** the SQLite database, all data models and the
+> deterministic synthetic dataset for Bloom & Bean. API routes are still
+> stubs (`501`); the KPIs, forecast, simulator, risk rules and Gemini arrive
+> in later stages.
 
 ---
 
@@ -91,6 +92,81 @@ pytest
 ```
 
 You should see all tests passing. `pytest.ini` already points it at `tests/`.
+The tests use a temporary in-memory database, so they never touch
+`ledgerlens.db`.
+
+---
+
+## The database and the demo data
+
+**Everything in the database is fictional.** The demo business is
+"Bloom & Bean", a made-up specialty coffee and bakery supplier in Bengaluru.
+The customers (`Aarav Foods`, `The Daily Table`, `Cafe Bloom`), the vendors
+(`FreshKart Wholesale`, `Sri Lakshmi Packaging`), every invoice and every
+GSTIN (all start with `SYNTH`) are invented. No row describes a real company.
+
+**Where it lives.** A single SQLite file, `backend/ledgerlens.db`, created
+automatically the first time the server starts. It is git-ignored — never
+commit it. Delete the file at any time and restart the server to get a fresh,
+identical copy.
+
+**When it fills up.** On startup the app creates any missing tables, and if
+`AUTO_SEED` is true (the default) it seeds the demo data **only when the
+database is empty**. Restarting never duplicates rows.
+
+### Seed commands
+
+From the `backend/` folder with the venv active:
+
+```bash
+python -m app.seed.seed_data           # seed only if the database is empty
+python -m app.seed.seed_data --reset   # wipe every table, then rebuild
+```
+
+Both print a summary of the row counts and the pinned figures (cash on the
+demo date, month-end balances, open invoices, upcoming commitments), and the
+script **fails loudly** if any of those numbers is off.
+
+The dataset is deterministic: it uses its own `random.Random(2026)` and the
+fixed demo date from `AS_OF_DATE`, never today's date. Running `--reset` twice
+produces byte-identical rows.
+
+### What is inside
+
+| Table | Purpose |
+| --- | --- |
+| `business_profiles` | The workspace: name, city, opening balance, as-of date |
+| `counterparties` | Customers we invoice and vendors we pay |
+| `transactions` | Signed cash movements, June – 19 Nov 2026 |
+| `invoices` | Sent invoices; status is only Draft / Pending / Paid |
+| `commitments` | Known upcoming payments (rent, payroll, EMI, GST…) |
+| `upload_batches` | Import history for CSV / invoice uploads |
+| `risk_alerts`, `chat_messages`, `simulation_runs` | Tables for later stages |
+
+### Rules worth remembering
+
+- **Money is `Numeric(14, 2)` and Python `Decimal`** — never a float. SQLite
+  has no native decimal type, so a warning about possible rounding is silenced
+  in `app/core/database.py`; our amounts convert exactly.
+- **Amounts are signed:** income positive, expense negative, and `type` always
+  matches the sign. A balance is `opening_balance + SUM(amount)`.
+- **"Overdue" is never stored.** Only Draft, Pending and Paid live in the
+  database; overdue is worked out later by comparing `due_date` with
+  `as_of_date`. Stored statuses would go stale the next day.
+- **The history stops at `2026-11-19`**, the fixed demo date. There is no
+  transaction after it.
+
+### Resetting when numbers look wrong
+
+If the data looks stale or you changed the seed script:
+
+```bash
+del ledgerlens.db                          # Windows
+rm ledgerlens.db                           # macOS / Linux
+python -m app.seed.seed_data               # rebuild from scratch
+```
+
+(Or simply `python -m app.seed.seed_data --reset`, which does both.)
 
 ---
 
@@ -104,11 +180,12 @@ backend/
 │   │   ├── config.py      # settings loaded from .env
 │   │   └── database.py    # SQLAlchemy setup (placeholder, Stage 2)
 │   ├── routers/           # one file per feature area, all under /api
-│   ├── models/            # database tables (Stage 2)
+│   ├── models/            # database tables: transaction, invoice, ...
 │   ├── schemas/           # Pydantic request/response models (Stage 3)
 │   ├── services/          # finance calculations (Stage 3+)
 │   ├── ai/                # Gemini explanations (Stage 8)
-│   └── seed/              # fictional Bloom & Bean sample data (Stage 2)
+│   └── seed/
+│       └── seed_data.py   # the fictional Bloom & Bean dataset
 ├── tests/
 ├── docs/
 │   └── API_CONTRACT.md    # what the frontend can expect from every route
@@ -136,6 +213,10 @@ The frontend turns them into readable dates.
 **`actual: null` for future months** — a month that has not happened yet has no
 actual value. It is `null`, never `0`, so the chart line stops instead of
 dropping to zero.
+
+**The database is SQLite** (`backend/ledgerlens.db`), created automatically on
+first run and filled with fictional sample data. See
+[The database and the demo data](#the-database-and-the-demo-data).
 
 **Placeholder routes return `501`** with
 `{"detail": "Not implemented yet (planned for Stage N)"}`. If you see a 501,
