@@ -37,9 +37,9 @@ def test_placeholder_route_returns_501():
 
 def test_placeholder_list_covers_all_staged_routes():
     """Every staged route exists and reports the 501 error shape."""
-    # /api/dashboard and /api/transactions went live in Stage 3, and
-    # /api/cashflow/forecast went live in Stage 4, so none of them are
-    # expected to answer 501 any more.
+    # /api/dashboard and /api/transactions went live in Stage 3,
+    # /api/cashflow/forecast in Stage 4 and /api/simulator/run in Stage 5, so
+    # none of them are expected to answer 501 any more.
     staged_gets = [
         ("/api/risk/alerts", 6),
         ("/api/receivables", 7),
@@ -47,7 +47,6 @@ def test_placeholder_list_covers_all_staged_routes():
         ("/api/copilot/suggestions", 8),
     ]
     staged_posts = [
-        ("/api/simulator/run", 5),
         ("/api/receivables/INV-204/mark-paid", 7),
         ("/api/invoices/INV-204/mark-paid", 7),
     ]

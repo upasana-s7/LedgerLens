@@ -122,7 +122,7 @@ cash-flow chart, the AI CFO card, risk highlights and recent activity.
 }
 ```
 
-*(Illustrative values computed from the seeded dataset. Stage 4 refines the forecast engine; treat these as shape examples, not fixed expectations.)*
+*(Illustrative values from the seeded dataset. The dashboard delegates to the same forecast engine that powers /api/cashflow/forecast, so values stay consistent across views.)*
 
 Notes:
 
@@ -310,15 +310,15 @@ Response:
 
 ```json
 {
-  "base_balance": 218000,
-  "scenario_cost": 50000,
-  "additional_revenue": 7500,
-  "projected_balance": 175500,
-  "verdict": "comfortable|caution",
-  "verdict_label": "string",
-  "threshold": 150000,
-  "explanation": "string",
-  "explanation_source": "rules|gemini"
+  "base_balance": 130513.34,
+  "scenario_cost": 50000.0,
+  "additional_revenue": 5477.0,
+  "projected_balance": 85990.34,
+  "verdict": "caution",
+  "verdict_label": "Proceed with caution",
+  "threshold": 225000.0,
+  "explanation": "This Rs 50,000 purchase would push your projected 30-day balance to Rs 85,990, below the Rs 225,000 comfort threshold. Even with a 15% revenue uplift contributing about Rs 5,477, the buffer would not hold. Consider a smaller purchase, or wait until overdue invoices are collected.",
+  "explanation_source": "rules"
 }
 ```
 
@@ -327,8 +327,9 @@ Response:
   simulator and the cash-flow chart can never disagree.
 - `projected_balance` =
   `base_balance − scenario_cost + additional_revenue`, computed in Python.
-- `verdict` compares `projected_balance` against `threshold` (₹1,50,000).
-  `verdict_label` is the ready-to-show text (e.g. "Safe to proceed").
+- `verdict` compares `projected_balance` against `threshold`, which is 1.5x
+  the ₹1,50,000 safety buffer (₹2,25,000). `verdict_label` is the ready-to-show
+  text: "Comfortably affordable" or "Proceed with caution".
 - `explanation_source` is `"rules"` unless Gemini wrote the text.
 
 ---

@@ -107,7 +107,7 @@ def _balance_on(db: Session, opening: Decimal, when: dt.date) -> Decimal:
 # The routine baseline
 # ---------------------------------------------------------------------------
 
-def _daily_baselines(db: Session) -> tuple[Decimal, Decimal, Decimal]:
+def get_daily_baselines(db: Session) -> tuple[Decimal, Decimal, Decimal]:
     """(routine inflow, routine outflow, net) per day over the last 90 days.
 
     The window is inclusive on both ends: AS_OF_DATE - 89 .. AS_OF_DATE.
@@ -133,6 +133,16 @@ def _daily_baselines(db: Session) -> tuple[Decimal, Decimal, Decimal]:
     outflow = round_rate(-_total("expense") / HISTORY_DAYS)
     net = round_rate(inflow - outflow)
     return inflow, outflow, net
+
+
+def _daily_baselines(db: Session) -> tuple[Decimal, Decimal, Decimal]:
+    """Backwards-compatible private name for `get_daily_baselines`.
+
+    Other services (the Stage 5 simulator) need the exact net-flow figure the
+    projection uses, so the calculation is public. This wrapper keeps the
+    original internal calls readable.
+    """
+    return get_daily_baselines(db)
 
 
 # ---------------------------------------------------------------------------
