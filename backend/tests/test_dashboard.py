@@ -9,17 +9,20 @@ import datetime as dt
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from app.models import Transaction
+from app.models import BusinessProfile, Transaction
 from app.services.kpi import (
-    _avg_daily_income,
+    _avg_daily_net_flow,
     _cashflow_series,
     _commitments_due,
     _current_balance,
+    _min_cash_buffer,
     _month_end_balance,
+    _projected_30d,
     _safe_to_spend,
 )
+from app.services.transactions import AS_OF_DATE
 
 VALID_TONES = {"green", "sage", "amber", "coral"}
 
@@ -74,27 +77,81 @@ def test_overdue_receivables_matches_the_invoices(dashboard):
     assert "2" in card["change"]
 
 
-def test_projected_30d_is_the_three_components(client, seeded_db):
-    """projected = current cash + 30 days of income - commitments due."""
+def test_projected_30d_uses_net_cash_flow(client, seeded_db):
+    """projected = current cash + 30 days of average NET cash flow.
+
+    The expected average is recomputed here straight from the table (a
+    separate code path from the service helper), so a wrong window or a
+    dropped sign shows up as a failure.
+    """
     body = client.get("/api/dashboard").json()
-    projected = body["kpis"]["projected_30d"]["value"]
+    projected = Decimal(str(body["kpis"]["projected_30d"]["value"]))
 
     current = _current_balance(seeded_db)
-    avg_daily = _avg_daily_income(seeded_db)
-    commitments = _commitments_due(seeded_db)
-    expected = float((current + avg_daily * 30 - commitments).quantize(Decimal("0.01")))
+    avg_daily = _avg_daily_net_flow(seeded_db)
+    expected = _projected_30d(seeded_db)
+
+    # Independent recomputation: 90-day window, signed amounts, divided by 90.
+    start = AS_OF_DATE - dt.timedelta(days=89)
+    total = seeded_db.scalar(
+        select(func.sum(Transaction.amount)).where(
+            Transaction.date >= start,
+            Transaction.date <= AS_OF_DATE,
+        )
+    )
+    manual_avg = (Decimal(str(total)) / 90).quantize(Decimal("0.01"))
 
     # Printed so the reviewer can see the numbers behind the KPI.
     print(
         "\nprojected_30d breakdown:"
-        f"\n  current_balance    = {current}"
-        f"\n  avg_daily_income   = {avg_daily}"
-        f"\n  commitments_30d    = {commitments}"
-        f"\n  projected_30d      = {expected}"
+        f"\n  current_balance     = {current}"
+        f"\n  avg_daily_net_flow  = {avg_daily}"
+        f"\n  avg x 30            = {avg_daily * 30}"
+        f"\n  commitments_30d     = {_commitments_due(seeded_db)} (not subtracted)"
+        f"\n  projected_30d       = {expected}"
     )
 
-    assert projected == expected
+    assert abs(avg_daily - manual_avg) <= Decimal("0.01")
+    # Tolerance of ₹1 covers 2-decimal rounding of the daily average.
+    assert abs(projected - (current + manual_avg * 30)) <= Decimal("1")
+    assert abs(projected - expected) <= Decimal("1")
     assert projected > 0
+
+
+def test_net_flow_times_30_explains_the_gap(seeded_db):
+    """avg_daily_net_flow x 30 reproduces projected_30d - current_balance."""
+    gap = _projected_30d(seeded_db) - _current_balance(seeded_db)
+    assert abs(gap - _avg_daily_net_flow(seeded_db) * 30) <= Decimal("1")
+
+
+def test_safe_to_spend_tone_is_green_with_seed(dashboard, seeded_db):
+    """Healthy cushion: safe_to_spend is well above 30% of the buffer."""
+    card = dashboard["kpis"]["safe_to_spend"]
+    buffer = _min_cash_buffer(seeded_db)
+
+    assert card["value"] == float(_safe_to_spend(seeded_db))
+    assert Decimal(str(card["value"])) > buffer * Decimal("0.3")
+    assert card["tone"] == "green"
+
+
+def test_safe_to_spend_tone_is_coral_when_cash_runs_out(client, seeded_db):
+    """Temporarily sink the opening balance in the in-memory DB only.
+
+    The seed data is untouched; this test just proves the tone rule reacts to
+    the computed numbers instead of being hardcoded.
+    """
+    profile = seeded_db.scalars(
+        select(BusinessProfile).order_by(BusinessProfile.id)
+    ).one()
+    profile.opening_balance = Decimal("-1000000")
+    seeded_db.commit()
+
+    body = client.get("/api/dashboard").json()
+
+    assert body["kpis"]["available_cash"]["value"] < 0
+    assert body["kpis"]["safe_to_spend"]["value"] <= 0
+    assert body["kpis"]["safe_to_spend"]["tone"] == "coral"
+    assert body["kpis"]["projected_30d"]["tone"] == "coral"
 
 
 def test_safe_to_spend_keeps_the_buffer(seeded_db, dashboard):

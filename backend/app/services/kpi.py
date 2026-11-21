@@ -123,12 +123,16 @@ def _overdue_receivables(db: Session) -> tuple[Decimal, int]:
     return _money(total), len(rows)
 
 
-def _avg_daily_income(db: Session, days: int = 90) -> Decimal:
-    """Average daily money-in over the last `days` days."""
-    start = AS_OF_DATE - dt.timedelta(days=days)
+def _avg_daily_net_flow(db: Session, days: int = 90) -> Decimal:
+    """Average daily NET cash flow over the last `days` days.
+
+    This sums every signed amount (income is positive, expenses are already
+    negative), so one number captures money in AND money out. The window is
+    inclusive on both ends: AS_OF_DATE - days + 1 .. AS_OF_DATE.
+    """
+    start = AS_OF_DATE - dt.timedelta(days=days - 1)
     total = db.scalar(
         select(func.sum(Transaction.amount)).where(
-            Transaction.amount > 0,
             Transaction.date >= start,
             Transaction.date <= AS_OF_DATE,
         )
@@ -152,16 +156,20 @@ def _commitments_due(db: Session, days: int = 30) -> Decimal:
     return _money(total)
 
 
-def _projected_30d(db: Session) -> Decimal:
-    """Expected closing balance 30 days out.
+def _projected_30d(db: Session, days: int = 30) -> Decimal:
+    """Expected closing balance `days` out, based on the net cash-flow trend.
 
-    current cash + 30 days of average income - commitments already due.
+    Formula: current_balance + (avg_daily_net_flow x 30).
+
+    Why net flow and not gross income: the 90-day window behind the average
+    already contains rent, payroll, EMI, utilities and GST as negative
+    transactions. Subtracting `_commitments_due` on top of that would
+    double-count those outgoings and understate the projection.
+
+    Stage 3.1 only needs a defensible placeholder; Stage 4 replaces this with
+    a proper day-by-day forecast engine.
     """
-    return _money(
-        _current_balance(db)
-        + _avg_daily_income(db) * 30
-        - _commitments_due(db, 30)
-    )
+    return _money(_current_balance(db) + _avg_daily_net_flow(db) * days)
 
 
 def _safe_to_spend(db: Session) -> Decimal:
@@ -172,6 +180,35 @@ def _safe_to_spend(db: Session) -> Decimal:
 def _min_cash_buffer(db: Session) -> Decimal:
     """The floor the business never wants to plan below (₹1,50,000)."""
     return _money(_profile(db).min_cash_buffer)
+
+
+def _safe_to_spend_tone(safe: Decimal, buffer: Decimal) -> str:
+    """Colour token for the safe-to-spend card.
+
+    Nothing left at all is coral (act now), less than 30% of the buffer is
+    amber (warning), and anything above that is green.
+    """
+    if safe <= 0:
+        return "coral"
+    if safe < buffer * Decimal("0.3"):
+        return "amber"
+    return "green"
+
+
+def _projected_tone(projected: Decimal, buffer: Decimal) -> str:
+    """Colour token for the 30-day projection card.
+
+    The card compares the projection with the safety buffer: below half the
+    buffer is coral, below the buffer is amber, up to 1.5x the buffer is sage,
+    and comfortably above it is green.
+    """
+    if projected <= buffer * Decimal("0.5"):
+        return "coral"
+    if projected < buffer:
+        return "amber"
+    if projected < buffer * Decimal("1.5"):
+        return "sage"
+    return "green"
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +319,7 @@ def build_dashboard(db: Session) -> DashboardResponse:
             value=_as_float(projected),
             change="Based on forecast",
             note="estimated closing balance",
-            tone="sage" if projected >= buffer else "amber",
+            tone=_projected_tone(projected, buffer),
         ),
         overdue_receivables=KpiCard(
             value=_as_float(overdue_total),
@@ -294,7 +331,7 @@ def build_dashboard(db: Session) -> DashboardResponse:
             value=_as_float(safe),
             change="After commitments",
             note="available for decisions",
-            tone="coral",
+            tone=_safe_to_spend_tone(safe, buffer),
         ),
     )
 

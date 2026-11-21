@@ -93,13 +93,13 @@ cash-flow chart, the AI CFO card, risk highlights and recent activity.
       "value": 342500, "change": "+8.2%", "note": "vs. last month", "tone": "green"
     },
     "projected_30d": {
-      "value": 218000, "change": "Based on forecast", "note": "estimated closing balance", "tone": "sage"
+      "value": 379013.3, "change": "Based on forecast", "note": "estimated closing balance", "tone": "sage"
     },
     "overdue_receivables": {
       "value": 85000, "change": "2 invoices", "note": "awaiting payment", "tone": "amber"
     },
     "safe_to_spend": {
-      "value": 68000, "change": "After commitments", "note": "available for decisions", "tone": "coral"
+      "value": 229013.3, "change": "After commitments", "note": "available for decisions", "tone": "coral"
     }
   },
   "cashflow_series": [
@@ -121,6 +121,8 @@ cash-flow chart, the AI CFO card, risk highlights and recent activity.
   "recent_transactions": [ { "...": "Transaction, 4 items" } ]
 }
 ```
+
+*(Illustrative values computed from the seeded dataset. Stage 4 refines the forecast engine; treat these as shape examples, not fixed expectations.)*
 
 Notes:
 
