@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { confirmInvoice, createTransaction, getCashFlowForecast, getDashboard, getInvoices, getReceivables, getRiskAlerts, getTransactions, markInvoicePaid, runSimulator, sendCopilotMessage, uploadInvoice, uploadTransactions, type CashFlowForecastResponse, type CopilotMessage, type DashboardResponse, type InvoiceUploadResponse, type Transaction } from "./api/client";
+import { confirmInvoice, createTransaction, getCashFlowForecast, getCopilotSuggestions, getDashboard, getInvoices, getReceivables, getRiskAlerts, getTransactions, markInvoicePaid, runSimulator, sendCopilotMessage, uploadInvoice, uploadTransactions, type CashFlowForecastResponse, type CopilotMessage, type DashboardResponse, type InvoiceUploadResponse, type Transaction } from "./api/client";
 import {
   Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Bell,
   CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Compass,
