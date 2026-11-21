@@ -48,6 +48,23 @@ export interface DashboardResponse {
   recent_transactions: DashboardTransaction[];
 }
 export function getDashboard(): Promise<DashboardResponse> { return request<DashboardResponse>("/dashboard"); }
+export interface CashFlowForecastResponse {
+  opening_balance: number;
+  inflows_30d: number;
+  outflows_30d: number;
+  series: { month: string; month_iso: string; actual: number | null; forecast: number | null }[];
+  daily_series: { date: string; balance: number }[];
+  range_label: string;
+  commitments: { label: string; amount: number; date: string }[];
+  assumptions: string[];
+  lowest_balance: { value: number; date: string };
+  shortfall_date: string | null;
+  is_sample_data: boolean;
+}
+export function getCashFlowForecast(days = 90): Promise<CashFlowForecastResponse> {
+  return request<CashFlowForecastResponse>(`/cashflow/forecast?days=${days}`);
+}
+
 export function getTransactions(params: { q?: string; type?: "income" | "expense"; page?: number; limit?: number } = {}): Promise<TransactionsResponse> {
   const search = new URLSearchParams();
   if (params.q) search.set("q", params.q);
