@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { getDashboard, type DashboardResponse } from "./api/client";
+import { createTransaction, getDashboard, getTransactions, uploadTransactions, type DashboardResponse, type Transaction } from "./api/client";
 import {
   Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Bell,
   CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Compass,
@@ -162,25 +162,70 @@ function RiskItem({ tone, title, detail }: { tone: string; title: string; detail
   return <div className="risk-item"><span className={`risk-indicator ${tone}`}><AlertCircle size={16} /></span><div><strong>{title}</strong><span>{detail}</span></div><ChevronRight size={16} className="risk-chevron" /></div>;
 }
 
-function Transactions({ transactions, addTransaction }: { transactions: typeof initialTransactions; addTransaction: (t: typeof initialTransactions[number]) => void }) {
+function formatTransactionDate(isoDate: string) {
+  return new Date(`${isoDate}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function Transactions({ addTransaction }: { addTransaction: (t: Transaction) => void }) {
   const [filter, setFilter] = useState("All");
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
-  const filtered = transactions.filter(t => (filter === "All" || (filter === "Income" ? t.amount > 0 : t.amount < 0)) && t.name.toLowerCase().includes(query.toLowerCase()));
+  const [items, setItems] = useState<Transaction[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    getTransactions({ q: query.trim() || undefined, type: filter === "All" ? undefined : filter === "Income" ? "income" : "expense", page: 1, limit: 200 })
+      .then(result => { if (active) { setItems(result.items); setTotal(result.total); } })
+      .catch((error: unknown) => { if (active) toast.error(error instanceof Error ? error.message : "Could not load transactions"); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [filter, query]);
+
+  const handleAdd = async (input: { name: string; amount: number; type: "income" | "expense"; category?: string }) => {
+    const created = await createTransaction(input);
+    setItems(current => [created, ...current]); setTotal(current => current + 1); addTransaction(created);
+    toast.success("Transaction saved successfully.");
+  };
+
+  const handleUpload = async (file?: File) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const result = await uploadTransactions(file);
+      toast.success(`Imported ${result.imported} transaction(s); skipped ${result.skipped}.`);
+      if (result.errors.length) toast.warning(result.errors.slice(0, 2).map(item => `Row ${item.row}: ${item.message}`).join(" · "));
+      const refreshed = await getTransactions({ q: query.trim() || undefined, type: filter === "All" ? undefined : filter === "Income" ? "income" : "expense", page: 1, limit: 200 });
+      setItems(refreshed.items); setTotal(refreshed.total);
+    } catch (error) { toast.error(error instanceof Error ? error.message : "CSV upload failed"); }
+    finally { setUploading(false); }
+  };
+
   return <div className="page-stack"><PageIntro title="Transactions" description="Every movement, in one clear view." action={<button className="button button-primary" onClick={() => setShowAdd(!showAdd)}><Plus size={16} /> Add transaction</button>} />
-    {showAdd && <AddTransaction onAdd={(t) => { addTransaction(t); setShowAdd(false); }} onCancel={() => setShowAdd(false)} />}
-    <SectionCard title="Your activity" subtitle={`${filtered.length} records in this demo workspace`}>
-      <div className="table-tools"><div className="search-box"><Search size={16} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search transactions..." /></div><div className="filter-tabs">{["All", "Income", "Expenses"].map(f => <button key={f} className={filter === f ? "selected" : ""} onClick={() => setFilter(f)}>{f}</button>)}</div><button className="icon-button bordered" onClick={() => toast("Date and category filters are coming soon.")}><Filter size={16} /></button></div>
-      <TransactionTable transactions={filtered} />
-      {filtered.length === 0 && <div className="empty-state">No transactions match that search.</div>}
+    {showAdd && <AddTransaction onAdd={handleAdd} onCancel={() => setShowAdd(false)} />}
+    <SectionCard title="Your activity" subtitle={`${total} records from your workspace`}>
+      <div className="table-tools"><div className="search-box"><Search size={16} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search transactions..." /></div><div className="filter-tabs">{["All", "Income", "Expenses"].map(f => <button key={f} className={filter === f ? "selected" : ""} onClick={() => setFilter(f)}>{f}</button>)}</div><label className="button button-outline"><UploadCloud size={15} /> {uploading ? "Uploading..." : "Import CSV"}<input type="file" accept=".csv,text/csv" disabled={uploading} onChange={e => { void handleUpload(e.target.files?.[0]); e.currentTarget.value = ""; }} /></label></div>
+      {loading ? <div className="empty-state">Loading transactions...</div> : <TransactionTable transactions={items.map(t => ({ ...t, date: formatTransactionDate(t.date) }))} />}
+      {!loading && items.length === 0 && <div className="empty-state">No transactions match your search.</div>}
     </SectionCard>
-    <div className="inline-note"><AlertCircle size={15} /> Demo records are illustrative. CSV import and verified financial calculations will be connected to the backend.</div>
+    <div className="inline-note"><AlertCircle size={15} /> Transactions are loaded from the connected LedgerLens API. Imported CSV rows are validated by the backend.</div>
   </div>;
 }
 
-function AddTransaction({ onAdd, onCancel }: { onAdd: (t: typeof initialTransactions[number]) => void; onCancel: () => void }) {
-  const [name, setName] = useState(""); const [amount, setAmount] = useState(""); const [type, setType] = useState("income");
-  return <SectionCard title="New transaction" subtitle="Add a sample entry to this local preview"><div className="form-grid"><label>Description<input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Customer payment" /></label><label>Amount (₹)<input type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)} placeholder="25000" /></label><label>Type<select value={type} onChange={e => setType(e.target.value)}><option value="income">Income</option><option value="expense">Expense</option></select></label></div><div className="form-actions"><button className="button button-outline" onClick={onCancel}>Cancel</button><button className="button button-primary" disabled={!name.trim() || Number(amount) <= 0} onClick={() => onAdd({ id: `TXN-${Date.now().toString().slice(-4)}`, name, category: type === "income" ? "Sales" : "General", date: "19 Nov 2026", amount: (type === "income" ? 1 : -1) * Number(amount), type })}>Save transaction</button></div></SectionCard>;
+function AddTransaction({ onAdd, onCancel }: { onAdd: (t: { name: string; amount: number; type: "income" | "expense"; category?: string }) => Promise<void>; onCancel: () => void }) {
+  const [name, setName] = useState(""); const [amount, setAmount] = useState("");
+  const [type, setType] = useState<"income" | "expense">("income");
+  const [category, setCategory] = useState("Sales"); const [saving, setSaving] = useState(false);
+  const save = async () => {
+    setSaving(true);
+    try { await onAdd({ name: name.trim(), amount: Number(amount), type, category }); onCancel(); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Could not save transaction"); }
+    finally { setSaving(false); }
+  };
+  return <SectionCard title="New transaction" subtitle="Add a transaction to your workspace"><div className="form-grid"><label>Description<input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Customer payment" /></label><label>Amount (₹)<input type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)} placeholder="25000" /></label><label>Type<select value={type} onChange={e => { const next = e.target.value as "income" | "expense"; setType(next); setCategory(next === "income" ? "Sales" : "General"); }}><option value="income">Income</option><option value="expense">Expense</option></select></label><label>Category<select value={category} onChange={e => setCategory(e.target.value)}>{["Sales", "Inventory", "Rent", "Utilities", "Payroll", "General"].map(option => <option key={option} value={option}>{option}</option>)}</select></label></div><div className="form-actions"><button className="button button-outline" onClick={onCancel}>Cancel</button><button className="button button-primary" disabled={saving || !name.trim() || Number(amount) <= 0} onClick={() => void save()}>{saving ? "Saving..." : "Save transaction"}</button></div></SectionCard>;
 }
 
 function CashFlow() {
@@ -236,12 +281,12 @@ export default function App() {
   const [transactions, setTransactions] = useState(initialTransactions);
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [invoices, setInvoices] = useState(initialInvoices);
-  const addTransaction = (t: typeof initialTransactions[number]) => { setTransactions(old => [t, ...old]); toast.success("Transaction added to this preview."); };
+  const addTransaction = (t: Transaction) => { setTransactions(old => [t, ...old]); };
   const markPaid = (id: string) => { setInvoices(old => old.map(i => i.id === id ? { ...i, status: "Paid" } : i)); toast.success("Invoice marked as paid in this preview."); };
   const pageContent = useMemo(() => {
     switch (page) {
       case "Overview": return <Overview setPage={setPage} transactions={transactions} dashboard={dashboard} />;
-      case "Transactions": return <Transactions transactions={transactions} addTransaction={addTransaction} />;
+      case "Transactions": return <Transactions addTransaction={addTransaction} />;
       case "Cash Flow": return <CashFlow />;
       case "What-If Simulator": return <Simulator />;
       case "Invoices": return <Invoices invoices={invoices} markPaid={markPaid} />;
