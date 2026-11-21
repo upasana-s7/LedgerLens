@@ -9,8 +9,13 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.routers import not_implemented
-from app.schemas.invoice import InvoiceListResponse, MarkPaidResponse
+from app.schemas.invoice import (
+    InvoiceConfirmRequest,
+    InvoiceConfirmResponse,
+    InvoiceListResponse,
+    InvoiceUploadResponse,
+    MarkPaidResponse,
+)
 from app.services import invoices as service
 
 router = APIRouter(tags=["Invoices"])
@@ -38,13 +43,42 @@ def mark_invoice_paid(
 
 # Declared after the {invoice_id} route but on a different path segment count,
 # so there is no conflict: "upload" only matches this exact path.
-@router.post("/invoices/upload", status_code=201)
-def upload_invoice(file: UploadFile = File(...)) -> dict:
-    """Extract fields from an invoice photo/PDF and save it as a Draft."""
-    raise not_implemented(9)
+@router.post(
+    "/invoices/upload", status_code=201, response_model=InvoiceUploadResponse
+)
+async def upload_invoice_endpoint(
+    file: UploadFile = File(...), db: Session = Depends(get_db)
+) -> InvoiceUploadResponse:
+    """Extract fields from an invoice photo/PDF and save it as a Draft.
+
+    A 201 means the file was accepted and stored. Extraction problems come back
+    as `warnings`, not as errors, because the user can still fill the fields in.
+    """
+    content = await file.read()
+    try:
+        return service.upload_invoice(
+            db,
+            file.filename or "upload",
+            content,
+            file.content_type or "application/octet-stream",
+        )
+    except ValueError as exc:
+        # Unsupported type or oversize file: nothing was stored.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/invoices/{invoice_id}/confirm")
-def confirm_invoice(invoice_id: str) -> dict:
+@router.post("/invoices/{invoice_id}/confirm", response_model=InvoiceConfirmResponse)
+def confirm_invoice_endpoint(
+    invoice_id: str,
+    payload: InvoiceConfirmRequest,
+    db: Session = Depends(get_db),
+) -> InvoiceConfirmResponse:
     """Save the reviewed fields and move a Draft invoice to Pending."""
-    raise not_implemented(9)
+    try:
+        return service.confirm_invoice(db, invoice_id, payload)
+    except service.InvoiceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except service.InvoiceStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

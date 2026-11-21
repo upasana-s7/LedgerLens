@@ -467,19 +467,23 @@ return **400**.
   "id": "INV-212",
   "status": "Draft",
   "fields": {
-    "client": "",
-    "due_date": "",
-    "amount": 0,
-    "invoice_number": ""
+    "client": "Cafe Aroma",
+    "due_date": "2026-12-15",
+    "amount": 28910.0,
+    "invoice_number": "LL-2026-212"
   },
-  "confidence": 0.82,
-  "warnings": ["string"]
+  "confidence": 1.0,
+  "warnings": []
 }
 ```
 
 The extracted fields are a **suggestion**, not truth. The UI must let the user
 correct them and then call `/confirm`. `confidence` is `0.0`–`1.0`;
 `warnings` lists anything the extractor was unsure about.
+
+*(Upload validates the file, runs Gemini vision extraction, and always returns
+201 — even if extraction fails, so the user can fill fields manually.
+Confidence reflects how many of the 4 fields were successfully extracted.)*
 
 ### `POST /api/invoices/{id}/confirm` — Stage 9
 
@@ -500,11 +504,20 @@ Response:
 {
   "id": "INV-212",
   "status": "Pending",
-  "invoice": { "...": "Invoice" }
+  "invoice": {
+    "id": "INV-212",
+    "client": "Cafe Aroma",
+    "due_date": "2026-12-15",
+    "amount": 28910.0,
+    "status": "Pending",
+    "days_overdue": 0
+  }
 }
 ```
 
-Confirms a `Draft` invoice and makes it `Pending`. Unknown id → **404**.
+Confirms a `Draft` invoice and makes it `Pending`, which adds it to
+`GET /api/receivables`. Unknown id → **404**; a draft that was already confirmed
+→ **409**.
 
 ### `POST /api/invoices/{id}/mark-paid` — Stage 7
 

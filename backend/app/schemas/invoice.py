@@ -8,7 +8,7 @@ date so it can never go stale.
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 InvoiceStatus = Literal["Draft", "Pending", "Overdue", "Paid"]
 
@@ -61,6 +61,50 @@ class ReceivableListResponse(BaseModel):
     # Always four buckets, in label order.
     aging_buckets: list[AgingBucket]
     items: list[InvoiceItem]
+
+
+class InvoiceExtractedFields(BaseModel):
+    """What the extractor read off the uploaded document.
+
+    Empty strings / zero mean "could not read it": the user fills those in on
+    the review screen before confirming.
+    """
+
+    client: str
+    # ISO "YYYY-MM-DD", or "" when the date could not be read.
+    due_date: str
+    # Positive rupees; 0 when the total could not be read.
+    amount: float
+    invoice_number: str
+
+
+class InvoiceUploadResponse(BaseModel):
+    """Result of uploading one invoice file. Always a Draft."""
+
+    id: str
+    status: Literal["Draft"]
+    fields: InvoiceExtractedFields
+    # Share of the four fields that were read successfully, 0.0 - 1.0.
+    confidence: float
+    # Plain-English notes for the review screen; empty when everything landed.
+    warnings: list[str]
+
+
+class InvoiceConfirmRequest(BaseModel):
+    """The reviewed fields the user accepts."""
+
+    client: str = Field(..., min_length=1, max_length=200)
+    due_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    amount: float = Field(..., gt=0)
+    invoice_number: str = Field(..., min_length=1, max_length=50)
+
+
+class InvoiceConfirmResponse(BaseModel):
+    """A confirmed invoice, now part of receivables."""
+
+    id: str
+    status: Literal["Pending"]
+    invoice: InvoiceItem
 
 
 class MarkPaidResponse(BaseModel):

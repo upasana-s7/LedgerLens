@@ -25,51 +25,35 @@ def test_health_returns_exact_payload():
     }
 
 
-def test_placeholder_route_returns_501():
-    """Routes planned for later stages answer with a clear 501 + detail."""
-    response = client.post("/api/invoices/INV-204/confirm")
+def test_no_placeholder_route_returns_501():
+    """Stage 9 built the last placeholder, so the 501 contract is now gone.
 
-    assert response.status_code == 501
-    assert response.json() == {
-        "detail": "Not implemented yet (planned for Stage 9)"
-    }
+    The old placeholder tests are removed on purpose: with every route live
+    there is nothing to assert 501 against. What still matters is that the
+    staged URLs are *registered* (not 404) and only answer their real methods,
+    so a wrong-method probe returns 405 - a route that had never been declared
+    would answer 404 instead.
+    """
+    # Upload is POST-only in the contract.
+    upload_get = client.get("/api/invoices/upload")
+    assert upload_get.status_code == 405
 
-
-def test_placeholder_list_covers_all_staged_routes():
-    """Every staged route exists and reports the 501 error shape."""
-    # /api/dashboard and /api/transactions went live in Stage 3,
-    # /api/cashflow/forecast in Stage 4, /api/simulator/run in Stage 5,
-    # /api/risk/alerts in Stage 6, /api/invoices + /api/receivables in Stage 7
-    # and both copilot routes in Stage 8, so none of them answer 501 any more.
-    # What is left is invoice upload / confirm (Stage 9).
-    staged_gets = []
-    staged_posts = [
-        ("/api/invoices/INV-204/confirm", 9),
+    # No 501 remains anywhere in the API surface.
+    probes = [
+        client.get("/api/health"),
+        client.get("/api/dashboard"),
+        client.get("/api/transactions"),
+        client.get("/api/cashflow/forecast"),
+        client.get("/api/risk/alerts"),
+        client.get("/api/invoices"),
+        client.get("/api/receivables"),
+        client.get("/api/copilot/suggestions"),
+        client.post("/api/copilot/chat", json={"message": "hi"}),
+        client.post("/api/simulator/run", json={}),
+        client.post("/api/invoices/INV-204/confirm", json={}),
     ]
-
-    for url, stage in staged_gets:  # pragma: no cover - kept for Stage 9
-        response = client.get(url)
-        assert response.status_code == 501, url
-        assert response.json()["detail"] == (
-            f"Not implemented yet (planned for Stage {stage})"
-        ), url
-
-    for url, stage in staged_posts:
-        response = client.post(url)
-        assert response.status_code == 501, url
-        assert response.json()["detail"] == (
-            f"Not implemented yet (planned for Stage {stage})"
-        ), url
-
-    # The upload route needs a file part to get past request validation.
-    upload = client.post(
-        "/api/invoices/upload",
-        files={"file": ("bill.pdf", b"%PDF-1.4", "application/pdf")},
-    )
-    assert upload.status_code == 501
-    assert upload.json()["detail"] == (
-        "Not implemented yet (planned for Stage 9)"
-    )
+    for response in probes:
+        assert response.status_code != 501
 
 
 def test_cors_preflight_from_vite_dev_origin_is_allowed():
