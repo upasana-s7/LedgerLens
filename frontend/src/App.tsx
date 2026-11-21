@@ -1,4 +1,5 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { getDashboard, type DashboardResponse } from "./api/client";
 import {
   Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Bell,
   CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Compass,
@@ -97,10 +98,10 @@ function MetricCard({ label, value, change, note, icon: Icon, tone = "green" }: 
   return <article className="metric-card"><div className="metric-top"><span>{label}</span><span className={`metric-icon ${tone}`}><Icon size={17} /></span></div><div className="metric-value">{value}</div><div className="metric-foot">{change && <span className={tone === "coral" ? "negative-change" : "positive-change"}>{change}</span>}<span>{note}</span></div></article>;
 }
 
-function CashFlowChart({ detailed = false }: { detailed?: boolean }) {
+function CashFlowChart({ detailed = false, data = cashData }: { detailed?: boolean; data?: { month: string; actual: number | null; forecast: number | null }[] }) {
   return <div className={`chart-wrap ${detailed ? "chart-large" : ""}`}>
     <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={cashData} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
+      <AreaChart data={data} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
         <defs><linearGradient id="cashFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#6d9b83" stopOpacity={0.22} /><stop offset="95%" stopColor="#6d9b83" stopOpacity={0.01} /></linearGradient></defs>
         <CartesianGrid stroke="#eeeee8" strokeDasharray="3 5" vertical={false} />
         <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "#929a95", fontSize: 11 }} dy={9} />
@@ -117,32 +118,34 @@ function SectionCard({ title, subtitle, action, children, className = "" }: { ti
   return <section className={`section-card ${className}`}><div className="section-heading"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{action}</div>{children}</section>;
 }
 
-function Overview({ setPage, transactions }: { setPage: (p: Page) => void; transactions: typeof initialTransactions }) {
+function Overview({ setPage, transactions, dashboard }: { setPage: (p: Page) => void; transactions: typeof initialTransactions; dashboard: DashboardResponse | null }) {
+  const chartData = dashboard?.cashflow_series ?? cashData;
+  const recentTransactions = dashboard?.recent_transactions?.map(t => ({ ...t, date: new Date(`${t.date}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) })) ?? transactions.slice(0, 4);
   return <div className="page-stack">
     <PageIntro title="Good evening." description="Here's what's happening with Bloom & Bean today." action={<button className="button button-primary" onClick={() => setPage("Transactions")}><Plus size={16} /> Add transaction</button>} />
-    <div className="demo-notice"><span className="demo-dot" /> DEMO WORKSPACE <span>Figures shown are illustrative sample data, not live bank balances.</span></div>
+    <div className="demo-notice"><span className="demo-dot" /> {dashboard?.workspace.is_sample_data ? "DEMO WORKSPACE" : dashboard ? "CONNECTED WORKSPACE" : "DEMO WORKSPACE"} <span>{dashboard ? `Financial data as of ${dashboard.as_of_date}. ${dashboard.workspace.is_sample_data ? "Illustrative sample data." : "Connected backend data."}` : "Showing sample figures while the backend is unavailable."}</span></div>
     <div className="metrics-grid">
-      <MetricCard label="Available cash" value="₹3,42,500" change="+8.2%" note="vs. last month" icon={Wallet} />
-      <MetricCard label="30-day projected" value="₹2,18,000" change="Based on forecast" note="estimated closing balance" icon={TrendingUp} tone="sage" />
-      <MetricCard label="Overdue receivables" value="₹85,000" change="2 invoices" note="awaiting payment" icon={Clock3} tone="amber" />
-      <MetricCard label="Safe to spend" value="₹68,000" change="After commitments" note="available for decisions" icon={Gauge} tone="coral" />
+      <MetricCard label="Available cash" value={money(dashboard?.kpis.available_cash.value ?? 342500)} change={dashboard?.kpis.available_cash.change ?? "+8.2%"} note={dashboard?.kpis.available_cash.note ?? "vs. last month"} icon={Wallet} />
+      <MetricCard label="30-day projected" value={money(dashboard?.kpis.projected_30d.value ?? 218000)} change={dashboard?.kpis.projected_30d.change ?? "Based on forecast"} note={dashboard?.kpis.projected_30d.note ?? "estimated closing balance"} icon={TrendingUp} tone="sage" />
+      <MetricCard label="Overdue receivables" value={money(dashboard?.kpis.overdue_receivables.value ?? 85000)} change={dashboard?.kpis.overdue_receivables.change ?? "2 invoices"} note={dashboard?.kpis.overdue_receivables.note ?? "awaiting payment"} icon={Clock3} tone="amber" />
+      <MetricCard label="Safe to spend" value={money(dashboard?.kpis.safe_to_spend.value ?? 68000)} change={dashboard?.kpis.safe_to_spend.change ?? "After commitments"} note={dashboard?.kpis.safe_to_spend.note ?? "available for decisions"} icon={Gauge} tone="coral" />
     </div>
     <div className="overview-grid">
       <SectionCard title="Cash flow outlook" subtitle="Your balance, looking ahead" action={<button className="text-action" onClick={() => setPage("Cash Flow")}>View forecast <ArrowUpRight size={14} /></button>}>
-        <div className="chart-legend"><span><i className="legend-dot actual-dot" /> Actual balance</span><span><i className="legend-line" /> Forecast</span><span className="legend-period">Jun 2026 — Feb 2027</span></div>
-        <div className="chart-main"><CashFlowChart /></div>
-        <div className="chart-insight"><span className="insight-icon"><Lightbulb size={15} /></span><p>Your projected balance stays positive over the next 90 days, but keep an eye on the December inventory cycle.</p></div>
+        <div className="chart-legend"><span><i className="legend-dot actual-dot" /> Actual balance</span><span><i className="legend-line" /> Forecast</span><span className="legend-period">{dashboard?.series_range_label ?? "Jun 2026 — Feb 2027"}</span></div>
+        <div className="chart-main"><CashFlowChart data={chartData} /></div>
+        <div className="chart-insight"><span className="insight-icon"><Lightbulb size={15} /></span><p>{dashboard?.insight ?? "Your projected balance stays positive over the next 90 days, but keep an eye on the December inventory cycle."}</p></div>
       </SectionCard>
       <SectionCard title="Your AI CFO" subtitle="A quick read on your business" action={<button className="icon-button small" onClick={() => setPage("AI Financial Copilot")}><ArrowUpRight size={17} /></button>}>
-        <div className="cfo-intro"><div className="cfo-avatar"><Sparkles size={18} /></div><div><strong>One thing worth your attention</strong><span>Updated just now · Sample insight</span></div></div>
-        <div className="cfo-highlight"><span className="risk-tag">CASH FLOW WATCH</span><h3>Two invoices are past due.</h3><p>₹85,000 is outstanding across two customers. Following up this week could give your December cash position more breathing room.</p></div>
+        <div className="cfo-intro"><div className="cfo-avatar"><Sparkles size={18} /></div><div><strong>One thing worth your attention</strong><span>{dashboard?.ai_cfo.updated_at ? `Updated ${new Date(dashboard.ai_cfo.updated_at).toLocaleString("en-IN")}` : "Sample insight"}</span></div></div>
+        <div className="cfo-highlight"><span className="risk-tag">{dashboard?.ai_cfo.tag ?? "CASH FLOW WATCH"}</span><h3>{dashboard?.ai_cfo.title ?? "Two invoices are past due."}</h3><p>{dashboard?.ai_cfo.body ?? "₹85,000 is outstanding across two customers. Following up this week could give your December cash position more breathing room."}</p></div>
         <button className="button button-outline full-button" onClick={() => setPage("AI Financial Copilot")}>Talk to your AI CFO <ArrowRight size={15} /></button>
         <div className="cfo-foot"><CheckCircle2 size={14} /> Recommendations are linked to sample financial records.</div>
       </SectionCard>
     </div>
     <div className="lower-grid">
       <SectionCard title="Recent transactions" subtitle="The latest activity in your books" action={<button className="text-action" onClick={() => setPage("Transactions")}>All transactions <ArrowUpRight size={14} /></button>}>
-        <TransactionTable transactions={transactions.slice(0, 4)} />
+        <TransactionTable transactions={recentTransactions} />
       </SectionCard>
       <SectionCard title="Risk radar" subtitle="A few things to keep on your radar" action={<button className="text-action" onClick={() => setPage("Risk Radar")}>See all <ArrowUpRight size={14} /></button>}>
         <div className="risk-list"><RiskItem tone="coral" title="Overdue customer invoices" detail="2 invoices · ₹85,000 outstanding" /><RiskItem tone="amber" title="Supplier price increase" detail="FreshKart costs rose by 12%" /><RiskItem tone="sage" title="December cash buffer" detail="Review inventory purchases before month-end" /></div>
@@ -224,13 +227,20 @@ function OverviewFooter() {
 export default function App() {
   const [page, setPage] = useState<Page>("Overview");
   const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => {
+    getDashboard().then(setDashboard).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : "Could not load dashboard data";
+      toast.error(`Backend connection: ${message}`);
+    });
+  }, []);
   const [transactions, setTransactions] = useState(initialTransactions);
+  const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [invoices, setInvoices] = useState(initialInvoices);
   const addTransaction = (t: typeof initialTransactions[number]) => { setTransactions(old => [t, ...old]); toast.success("Transaction added to this preview."); };
   const markPaid = (id: string) => { setInvoices(old => old.map(i => i.id === id ? { ...i, status: "Paid" } : i)); toast.success("Invoice marked as paid in this preview."); };
   const pageContent = useMemo(() => {
     switch (page) {
-      case "Overview": return <Overview setPage={setPage} transactions={transactions} />;
+      case "Overview": return <Overview setPage={setPage} transactions={transactions} dashboard={dashboard} />;
       case "Transactions": return <Transactions transactions={transactions} addTransaction={addTransaction} />;
       case "Cash Flow": return <CashFlow />;
       case "What-If Simulator": return <Simulator />;
