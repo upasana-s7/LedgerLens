@@ -35,7 +35,10 @@ class Settings(BaseSettings):
     # --- Gemini (Stage 8) --------------------------------------------------
     # Empty by default: the app falls back to rule-based explanations.
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    # 2.5 Flash is retired for new API keys (404). Gemini 3 Flash answers this
+    # grounded prompt in ~2s, where 3.5/3.8 Flash take 20s+ and often time out.
+    # Override with GEMINI_MODEL in .env if a different model is enabled.
+    GEMINI_MODEL: str = "gemini-3.1-flash-lite"
 
     # --- Demo data ---------------------------------------------------------
     # A fixed "today" so every demo run produces the same numbers.

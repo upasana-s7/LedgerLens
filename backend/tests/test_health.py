@@ -27,11 +27,11 @@ def test_health_returns_exact_payload():
 
 def test_placeholder_route_returns_501():
     """Routes planned for later stages answer with a clear 501 + detail."""
-    response = client.get("/api/copilot/suggestions")
+    response = client.post("/api/invoices/INV-204/confirm")
 
     assert response.status_code == 501
     assert response.json() == {
-        "detail": "Not implemented yet (planned for Stage 8)"
+        "detail": "Not implemented yet (planned for Stage 9)"
     }
 
 
@@ -39,18 +39,15 @@ def test_placeholder_list_covers_all_staged_routes():
     """Every staged route exists and reports the 501 error shape."""
     # /api/dashboard and /api/transactions went live in Stage 3,
     # /api/cashflow/forecast in Stage 4, /api/simulator/run in Stage 5,
-    # /api/risk/alerts in Stage 6, and /api/invoices + /api/receivables in
-    # Stage 7, so none of them answer 501 any more. What is left is the copilot
-    # (Stage 8) and invoice upload / confirm (Stage 9).
-    staged_gets = [
-        ("/api/copilot/suggestions", 8),
-    ]
+    # /api/risk/alerts in Stage 6, /api/invoices + /api/receivables in Stage 7
+    # and both copilot routes in Stage 8, so none of them answer 501 any more.
+    # What is left is invoice upload / confirm (Stage 9).
+    staged_gets = []
     staged_posts = [
-        ("/api/copilot/chat", 8),
         ("/api/invoices/INV-204/confirm", 9),
     ]
 
-    for url, stage in staged_gets:
+    for url, stage in staged_gets:  # pragma: no cover - kept for Stage 9
         response = client.get(url)
         assert response.status_code == 501, url
         assert response.json()["detail"] == (
