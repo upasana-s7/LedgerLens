@@ -3,7 +3,7 @@ import { createTransaction, getDashboard, getTransactions, uploadTransactions, t
 import {
   Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Bell,
   CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Compass,
-  FileText, Filter, Gauge, Home, Lightbulb, Menu, MoreHorizontal, Paperclip,
+  FileText, Gauge, Home, Lightbulb, Menu, MoreHorizontal, Paperclip,
   Plus, Search, Send, Settings, ShieldAlert, SlidersHorizontal, Sparkles,
   TrendingDown, TrendingUp, UploadCloud, Wallet, X,
 } from "lucide-react";
