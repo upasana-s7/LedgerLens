@@ -225,7 +225,10 @@ function AddTransaction({ onAdd, onCancel }: { onAdd: (t: { name: string; amount
     catch (error) { toast.error(error instanceof Error ? error.message : "Could not save transaction"); }
     finally { setSaving(false); }
   };
-  return <SectionCard title="New transaction" subtitle="Add a transaction to your workspace"><div className="form-grid"><label>Description<input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Customer payment" /></label><label>Amount (₹)<input type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)} placeholder="25000" /></label><label>Type<select value={type} onChange={e => { const next = e.target.value as "income" | "expense"; setType(next); setCategory(next === "income" ? "Sales" : "General"); }}><option value="income">Income</option><option value="expense">Expense</option></select></label><label>Category<select value={category} onChange={e => setCategory(e.target.value)}>{["Sales", "Inventory", "Rent", "Utilities", "Payroll", "General"].map(option => <option key={option} value={option}>{option}</option>)}</select></label></div><div className="form-actions"><button className="button button-outline" onClick={onCancel}>Cancel</button><button className="button button-primary" disabled={saving || !name.trim() || Number(amount) <= 0} onClick={() => void save()}>{saving ? "Saving..." : "function CashFlow() {
+  return <SectionCard title="New transaction" subtitle="Add a transaction to your workspace"><div className="form-grid"><label>Description<input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Customer payment" /></label><label>Amount (₹)<input type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)} placeholder="25000" /></label><label>Type<select value={type} onChange={e => { const next = e.target.value as "income" | "expense"; setType(next); setCategory(next === "income" ? "Sales" : "General"); }}><option value="income">Income</option><option value="expense">Expense</option></select></label><label>Category<select value={category} onChange={e => setCategory(e.target.value)}>{["Sales", "Inventory", "Rent", "Utilities", "Payroll", "General"].map(option => <option key={option} value={option}>{option}</option>)}</select></label></div><div className="form-actions"><button className="button button-outline" onClick={onCancel}>Cancel</button><button className="button button-primary" disabled={saving || !name.trim() || Number(amount) <= 0} onClick={() => void save()}>{saving ? "Saving..." : "Save transaction"}</button></div></SectionCard>;
+}
+
+function CashFlow() {
   const [forecast, setForecast] = useState<CashFlowForecastResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -246,8 +249,12 @@ function AddTransaction({ onAdd, onCancel }: { onAdd: (t: { name: string; amount
     </div>
     <SectionCard title="Balance forecast" subtitle={forecast ? `Historical balance and projection · ${forecast.range_label}` : "Historical balance and projected cash position"}>
       <div className="chart-legend"><span><i className="legend-dot actual-dot" /> Actual</span><span><i className="legend-line" /> Forecast</span></div>
-      <div className="chart-main cashflow-detail-chart">{forecast && <CashFlowChart detailed data={forecast.series} />}{loading && <div className="inline-note">Loading your cash-flow forecast…</div>}{error && !forecast && <div className="inline-note"><AlertCircle size={15} /> Forecast unavailable: {error}</div>}</div>
-      {forecast && <div className="chart-insight"><span className="insight-icon"><Lightbulb size={15} /></span><p>Lowest projected balance: <strong>{money(forecast.lowest_balance.value)}</strong> on {formatDate(forecast.lowest_balance.date)}.{forecast.shortfall_date ? ` The ₹1,50,000 safety buffer is first breached on ${formatDate(forecast.shortfall_date)}.` : " The forecast stays above the ₹1,50,000 safety buffer."}</p></div>}
+      <div className="chart-main cashflow-detail-chart">
+        {forecast && <CashFlowChart detailed data={forecast.series} />}
+        {loading && <div className="inline-note">Loading your cash-flow forecast…</div>}
+        {error && !forecast && <div className="inline-note"><AlertCircle size={15} /> Forecast unavailable: {error}</div>}
+      </div>
+      {forecast && <div className="chart-insight"><span className="insight-icon"><Lightbulb size={15} /></span><p>Lowest projected balance: <strong>{money(forecast.lowest_balance.value)}</strong> on {formatDate(forecast.lowest_balance.date)}.{forecast.shortfall_date ? ` The safety buffer is first breached on ${formatDate(forecast.shortfall_date)}.` : " The forecast stays above the safety buffer."}</p></div>}
     </SectionCard>
     <div className="two-col">
       <SectionCard title="Upcoming commitments" subtitle="Planned cash outflows already included in the forecast">
