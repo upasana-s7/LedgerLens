@@ -249,6 +249,25 @@ Read `docs/API_CONTRACT.md` before writing frontend code against this API.
 
 ---
 
+## Demo & handoff
+
+Presenting LedgerLens or wiring up the frontend? Start here:
+
+- **`docs/DEMO_SCRIPT.md`** — the 5-minute live demo clickbook: pre-demo
+  checklist, screen-by-screen narration with the exact numbers to point at,
+  and prepared answers for the likely questions.
+- **`docs/FRONTEND_HANDOFF.md`** — one page for the frontend: base URL, which
+  endpoint backs which screen, money/date formatting, and how the numbers move
+  when the user takes an action.
+
+`tests/test_e2e_demo.py` walks that same story as one test — dashboard →
+invoice upload → confirm → receivables → mark paid → dashboard → copilot — so a
+passing suite means the demo's state transitions work on a single seed.
+
+**All 16 endpoints are live. 184+ tests pass. The backend is feature-complete.**
+
+---
+
 ## Troubleshooting
 
 **`uvicorn: command not found`** — the venv is not active. Re-run the activate

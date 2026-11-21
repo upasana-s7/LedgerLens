@@ -22,3 +22,6 @@ __pycache__/
 
 # Uploaded CSV / invoice files
 uploads/
+
+# Sample document used in the live demo
+sample_invoice.*
