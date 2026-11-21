@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { createTransaction, getCashFlowForecast, getDashboard, getTransactions, uploadTransactions, type CashFlowForecastResponse, type DashboardResponse, type Transaction } from "./api/client";
+import { confirmInvoice, createTransaction, getCashFlowForecast, getDashboard, getInvoices, getReceivables, getRiskAlerts, getTransactions, markInvoicePaid, runSimulator, sendCopilotMessage, uploadInvoice, uploadTransactions, type CashFlowForecastResponse, type CopilotMessage, type DashboardResponse, type InvoiceUploadResponse, type Transaction } from "./api/client";
 import {
   Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Bell,
   CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Compass,
@@ -269,36 +269,149 @@ function CashFlow() {
 }
 
 function Simulator() {
-  const [purchase, setPurchase] = useState(50000); const [revenue, setRevenue] = useState(15); const [showResult, setShowResult] = useState(false);
-  const projected = 218000 - purchase + (purchase * revenue / 100);
+  const [purchase, setPurchase] = useState(50000);
+  const [revenue, setRevenue] = useState(15);
+  const [result, setResult] = useState<Awaited<ReturnType<typeof runSimulator>> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const run = async () => {
+    setLoading(true); setError("");
+    try { setResult(await runSimulator({ purchase_amount: purchase, revenue_uplift_pct: revenue })); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Could not run this scenario"); }
+    finally { setLoading(false); }
+  };
   return <div className="page-stack"><PageIntro eyebrow="MAKE THE NEXT MOVE WITH CLARITY" title="What-if simulator" description="Explore a decision before it becomes a commitment." />
-    <div className="simulator-layout"><SectionCard title="Build your scenario" subtitle="Adjust the assumptions to explore a possible decision"><div className="scenario-block"><div className="scenario-label"><div><span className="scenario-number">01</span><strong>New inventory purchase</strong></div><strong>{money(purchase)}</strong></div><input className="range-input" type="range" min="10000" max="200000" step="5000" value={purchase} onChange={e => { setPurchase(Number(e.target.value)); setShowResult(false); }} /><div className="range-labels"><span>₹10,000</span><span>₹2,00,000</span></div></div><div className="scenario-block"><div className="scenario-label"><div><span className="scenario-number">02</span><strong>Expected revenue uplift</strong></div><strong>{revenue}%</strong></div><input className="range-input" type="range" min="0" max="40" step="1" value={revenue} onChange={e => { setRevenue(Number(e.target.value)); setShowResult(false); }} /><div className="range-labels"><span>0%</span><span>40%</span></div></div><div className="scenario-summary"><div><span>Current 30-day projected balance</span><strong>₹2,18,000</strong></div><div><span>Scenario cost</span><strong className="amount-negative">−{money(purchase)}</strong></div><div><span>Estimated additional revenue</span><strong className="amount-positive">+{money(purchase * revenue / 100)}</strong></div></div><button className="button button-primary full-button" onClick={() => setShowResult(true)}><Sparkles size={16} /> Run this scenario</button></SectionCard>
-      <div className="scenario-result"><div className="result-orbit"><Compass size={26} /></div><span className="eyebrow">YOUR SCENARIO OUTCOME</span><h2>{showResult ? money(projected) : "What could your balance look like?"}</h2><p>{showResult ? "Illustrative closing balance after the purchase and estimated revenue uplift." : "Set your assumptions and run the scenario to see an estimated impact on your cash position."}</p>{showResult && <div className={projected >= 150000 ? "verdict-positive" : "verdict-caution"}>{projected >= 150000 ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}{projected >= 150000 ? "Within the illustrative comfort range" : "Consider a smaller purchase or staged order"}</div>}<div className="result-foot"><AlertCircle size={14} /> Preview calculation only. Final decision support will use verified backend figures.</div></div></div>
+    <div className="simulator-layout"><SectionCard title="Build your scenario" subtitle="Adjust the assumptions to explore a possible decision">
+      <div className="scenario-block"><div className="scenario-label"><div><span className="scenario-number">01</span><strong>New inventory purchase</strong></div><strong>{money(purchase)}</strong></div><input className="range-input" type="range" min="10000" max="200000" step="5000" value={purchase} onChange={e => { setPurchase(Number(e.target.value)); setResult(null); }} /><div className="range-labels"><span>₹10,000</span><span>₹2,00,000</span></div></div>
+      <div className="scenario-block"><div className="scenario-label"><div><span className="scenario-number">02</span><strong>Expected revenue uplift</strong></div><strong>{revenue}%</strong></div><input className="range-input" type="range" min="0" max="40" step="1" value={revenue} onChange={e => { setRevenue(Number(e.target.value)); setResult(null); }} /><div className="range-labels"><span>0%</span><span>40%</span></div></div>
+      <div className="scenario-summary"><div><span>Current 30-day projected balance</span><strong>{result ? money(result.base_balance) : "Fetched when you run"}</strong></div><div><span>Scenario cost</span><strong className="amount-negative">−{money(purchase)}</strong></div><div><span>Estimated additional revenue</span><strong className="amount-positive">+{money(result?.additional_revenue ?? 0)}</strong></div></div>
+      <button className="button button-primary full-button" disabled={loading} onClick={() => void run()}><Sparkles size={16} /> {loading ? "Calculating…" : "Run this scenario"}</button>
+      {error && <div className="inline-note"><AlertCircle size={15} /> {error}</div>}
+    </SectionCard>
+    <div className="scenario-result"><div className="result-orbit"><Compass size={26} /></div><span className="eyebrow">YOUR SCENARIO OUTCOME</span><h2>{result ? money(result.projected_balance) : "What could your balance look like?"}</h2><p>{result ? result.explanation : "Run the scenario to calculate its impact using the backend forecast."}</p>
+      {result && <div className={result.verdict === "affordable" || result.verdict === "comfortable" ? "verdict-positive" : "verdict-caution"}>{result.verdict === "affordable" || result.verdict === "comfortable" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}{result.verdict_label}</div>}
+      {result && <div className="result-foot"><AlertCircle size={14} /> Backend-calculated · {result.explanation_source === "gemini" ? "AI-assisted explanation" : "Rule-based explanation"} · Comfort threshold {money(result.threshold)}</div>}
+    </div></div>
   </div>;
 }
 
-function Invoices({ invoices, markPaid }: { invoices: typeof initialInvoices; markPaid: (id: string) => void }) {
-  const [uploadName, setUploadName] = useState("");
-  return <div className="page-stack"><PageIntro title="Invoices" description="Keep track of what you've billed and what is still due." action={<label className="button button-primary upload-button"><UploadCloud size={16} /> Upload invoice<input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={e => { const file = e.target.files?.[0]; if (file) { setUploadName(file.name); toast("File selected for the future invoice extraction workflow."); } }} /></label>} />
-    {uploadName && <div className="upload-selected"><FileText size={16} /> {uploadName} <button onClick={() => setUploadName("")}><X size={14} /></button></div>}
-    <div className="metrics-grid compact-metrics"><MetricCard label="Total outstanding" value="₹1,09,500" note="Across 3 invoices" icon={FileText} /><MetricCard label="Overdue" value="₹85,000" note="Needs follow-up" icon={Clock3} tone="coral" /><MetricCard label="Collected this month" value="₹1,84,000" note="Demo figure" icon={CheckCircle2} tone="sage" /></div>
-    <SectionCard title="Invoice register" subtitle="Sample customer invoices"><div className="invoice-list">{invoices.map(inv => <div className="invoice-row" key={inv.id}><div className="invoice-file-icon"><FileText size={19} /></div><div className="invoice-main"><strong>{inv.id} · {inv.client}</strong><span>Due {inv.due}</span></div><strong className="invoice-amount">{money(inv.amount)}</strong><span className={`status-pill ${inv.status === "Overdue" ? "status-overdue" : inv.status === "Paid" ? "status-paid" : "status-pending"}`}>{inv.status}</span>{inv.status !== "Paid" && <button className="button button-small button-outline" onClick={() => markPaid(inv.id)}>Mark paid</button>}</div>)}</div></SectionCard><div className="inline-note"><AlertCircle size={15} /> Upload currently selects a file in the browser only. Secure invoice extraction and confirmation will be connected to the backend.</div></div>;
+function formatApiDate(value: string) {
+  return new Date(\`\${value}T00:00:00\`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function Invoices() {
+  const [data, setData] = useState<Awaited<ReturnType<typeof getInvoices>> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState("");
+  const [draft, setDraft] = useState<InvoiceUploadResponse | null>(null);
+  const [client, setClient] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [amount, setAmount] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const refresh = async () => { setData(await getInvoices()); };
+  useEffect(() => { let active = true; getInvoices().then(value => { if (active) setData(value); }).catch(e => toast.error(e instanceof Error ? e.message : "Could not load invoices")).finally(() => { if (active) setLoading(false); }); return () => { active = false; }; }, []);
+  const onUpload = async (file?: File) => {
+    if (!file) return; setUploading(true);
+    try {
+      const value = await uploadInvoice(file); setDraft(value);
+      setClient(value.fields.client || ""); setDueDate(value.fields.due_date || "");
+      setAmount(String(value.fields.amount || "")); setInvoiceNumber(value.fields.invoice_number || "");
+      toast.success("Invoice uploaded. Review the extracted details before confirming.");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Invoice upload failed"); }
+    finally { setUploading(false); }
+  };
+  const confirm = async () => {
+    if (!draft || !client.trim() || !dueDate || Number(amount) <= 0) return;
+    setBusyId(draft.id);
+    try { await confirmInvoice(draft.id, { client: client.trim(), due_date: dueDate, amount: Number(amount), invoice_number: invoiceNumber.trim() }); setDraft(null); await refresh(); toast.success("Invoice confirmed and added to your register."); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Could not confirm invoice"); }
+    finally { setBusyId(""); }
+  };
+  const paid = async (id: string) => {
+    setBusyId(id);
+    try { await markInvoicePaid(id); await refresh(); toast.success("Invoice marked as paid."); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Could not update invoice"); }
+    finally { setBusyId(""); }
+  };
+  return <div className="page-stack"><PageIntro title="Invoices" description="Keep track of what you've billed and what is still due." action={<label className="button button-primary upload-button"><UploadCloud size={16} /> {uploading ? "Uploading…" : "Upload invoice"}<input type="file" accept=".pdf,.png,.jpg,.jpeg" disabled={uploading} onChange={e => { void onUpload(e.target.files?.[0]); e.currentTarget.value = ""; }} /></label>} />
+    {draft && <SectionCard title="Review extracted invoice" subtitle={\`Draft \${draft.id} · \${Math.round(draft.confidence * 100)}% extraction confidence\`}>
+      {draft.warnings.length > 0 && <div className="inline-note"><AlertCircle size={15} /> {draft.warnings.join(" · ")}</div>}
+      <div className="form-grid"><label>Client<input value={client} onChange={e => setClient(e.target.value)} /></label><label>Due date<input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} /></label><label>Amount (₹)<input type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)} /></label><label>Invoice number<input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} /></label></div>
+      <div className="form-actions"><button className="button button-outline" onClick={() => setDraft(null)}>Discard draft</button><button className="button button-primary" disabled={!client.trim() || !dueDate || Number(amount) <= 0 || busyId === draft.id} onClick={() => void confirm()}>{busyId === draft.id ? "Confirming…" : "Confirm invoice"}</button></div>
+    </SectionCard>}
+    <div className="metrics-grid compact-metrics"><MetricCard label="Total outstanding" value={data ? money(data.summary.total_outstanding) : "—"} note={data ? \`Across \${data.summary.outstanding_count} invoices\` : "Loading"} icon={FileText} /><MetricCard label="Overdue" value={data ? money(data.summary.overdue_total) : "—"} note="Needs follow-up" icon={Clock3} tone="coral" /><MetricCard label="Collected this month" value={data ? money(data.summary.collected_this_month) : "—"} note="Payments received" icon={CheckCircle2} tone="sage" /></div>
+    <SectionCard title="Invoice register" subtitle={data ? \`\${data.items.length} records from your workspace\` : "Connected invoice records"}>
+      {loading ? <div className="empty-state">Loading invoices…</div> : data?.items.length ? <div className="invoice-list">{data.items.map(inv => <div className="invoice-row" key={inv.id}><div className="invoice-file-icon"><FileText size={19} /></div><div className="invoice-main"><strong>{inv.id} · {inv.client}</strong><span>Due {formatApiDate(inv.due_date)}</span></div><strong className="invoice-amount">{money(inv.amount)}</strong><span className={\`status-pill \${inv.status === "Overdue" ? "status-overdue" : inv.status === "Paid" ? "status-paid" : "status-pending"}\`}>{inv.status}</span>{inv.status !== "Paid" && <button className="button button-small button-outline" disabled={busyId === inv.id} onClick={() => void paid(inv.id)}>{busyId === inv.id ? "Saving…" : "Mark paid"}</button>}</div>)}</div> : <div className="empty-state">No invoices returned by the API.</div>}
+    </SectionCard><div className="inline-note"><AlertCircle size={15} /> Uploaded invoice details are suggestions. Always review extracted fields before confirming them.</div></div>;
 }
 
 function RiskRadar() {
-  return <div className="page-stack"><PageIntro title="Risk radar" description="Spot pressure points early, while you still have room to act." /><div className="risk-summary"><div className="risk-summary-icon"><ShieldAlert size={23} /></div><div><strong>2 items need attention</strong><span>Plus 1 planning consideration · sample analysis</span></div><span className="risk-tag">REVIEW RECOMMENDED</span></div><div className="risk-cards"><SectionCard title="Overdue receivables" subtitle="Cash tied up in unpaid invoices"><div className="risk-large-number">₹85,000</div><p className="body-copy">Two customer invoices have passed their due dates. Following up can help improve short-term liquidity.</p><div className="risk-detail"><span>Potential impact</span><strong>Cash collection delay</strong></div><button className="text-action" onClick={() => toast("Opening receivables follow-up workflow soon.")}>Review collection plan <ArrowRight size={14} /></button></SectionCard><SectionCard title="Supplier price movement" subtitle="Input cost pressure"><div className="risk-large-number">+12%</div><p className="body-copy">FreshKart Wholesale's recent sample purchase is higher than the previous baseline.</p><div className="risk-detail"><span>Potential impact</span><strong>Margin compression</strong></div><button className="text-action" onClick={() => toast("Supplier comparison will be available with transaction history.")}>Review supplier costs <ArrowRight size={14} /></button></SectionCard><SectionCard title="December cash buffer" subtitle="Forward-looking watch item"><div className="risk-large-number">90 days</div><p className="body-copy">The current sample forecast remains positive, but inventory timing could narrow the available buffer.</p><div className="risk-detail"><span>Potential impact</span><strong>Reduced flexibility</strong></div><button className="text-action" onClick={() => toast("Try the What-If Simulator to explore this decision.")}>Test a scenario <ArrowRight size={14} /></button></SectionCard></div><div className="inline-note"><AlertCircle size={15} /> These are demonstration alerts, not audited or live risk assessments.</div></div>;
+  const [data, setData] = useState<Awaited<ReturnType<typeof getRiskAlerts>> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => { let active = true; getRiskAlerts().then(value => { if (active) setData(value); }).catch(e => { if (active) setError(e instanceof Error ? e.message : "Could not load risk alerts"); }).finally(() => { if (active) setLoading(false); }); return () => { active = false; }; }, []);
+  return <div className="page-stack"><PageIntro title="Risk radar" description="Spot pressure points early, while you still have room to act." />
+    {data && <div className="risk-summary"><div className="risk-summary-icon"><ShieldAlert size={23} /></div><div><strong>{data.summary.attention_count} items need attention</strong><span>{data.summary.note}</span></div><span className="risk-tag">{data.summary.tag}</span></div>}
+    {loading && <div className="empty-state">Loading risk analysis…</div>}
+    {error && <div className="inline-note"><AlertCircle size={15} /> {error}</div>}
+    {data && <div className="risk-cards">{data.alerts.map(alert => <SectionCard key={alert.id} title={alert.title} subtitle={alert.subtitle}>
+      <div className="risk-large-number">{alert.metric}</div><p className="body-copy">{alert.body}</p>
+      <div className="risk-detail"><span>{alert.impact_label}</span><strong>{alert.impact_value}</strong></div>
+      <div className="risk-evidence"><strong>Evidence</strong>{alert.evidence.map((item, index) => <div key={\`\${item.kind}-\${item.id}-\${index}\`}>{item.label}</div>)}</div>
+      <span className={\`risk-tag \${alert.tone}\`}>{alert.action_label}</span>
+    </SectionCard>)}</div>}
+    <div className="inline-note"><AlertCircle size={15} /> Risk alerts are generated from the connected workspace records and forecast model. Review the underlying evidence before acting.</div>
+  </div>;
 }
 
 function Copilot() {
-  const [messages, setMessages] = useState([{ role: "assistant", text: "Hello! I'm your LedgerLens AI CFO. I can help you explore your sample cash flow, receivables and business decisions. What would you like to understand?" }]);
+  const [messages, setMessages] = useState<CopilotMessage[]>([{ role: "assistant", text: "Hello! I'm your LedgerLens AI CFO. Ask me about cash flow, receivables or a business decision." }]);
   const [draft, setDraft] = useState("");
-  const send = (value = draft) => { if (!value.trim()) return; setMessages(m => [...m, { role: "user", text: value }, { role: "assistant", text: "That's a good question. In this frontend preview, I can show the conversation flow, but evidence-backed answers will be powered by your connected financial records once the backend is integrated. For now, the sample dashboard shows ₹85,000 in overdue receivables and a 30-day projected balance of ₹2,18,000." }]); setDraft(""); };
-  return <div className="page-stack"><PageIntro title="Your AI financial copilot" description="Ask clearer questions. Make more confident decisions." /><div className="copilot-layout"><section className="chat-panel"><div className="chat-header"><div className="cfo-avatar"><Sparkles size={18} /></div><div><strong>LedgerLens CFO</strong><span><i className="online-dot" /> Demo assistant · Not connected to live data</span></div><button className="icon-button small" onClick={() => setMessages([{ role: "assistant", text: "Conversation cleared. What would you like to explore?" }])}><MoreHorizontal size={18} /></button></div><div className="chat-messages">{messages.map((m, i) => <div key={i} className={`chat-message ${m.role}`}><div className="message-avatar">{m.role === "assistant" ? <Sparkles size={15} /> : "US"}</div><div className="message-bubble">{m.text}</div></div>)}</div><div className="suggestion-row">{["Can I afford new inventory?", "What needs my attention?", "How much is overdue?"].map(s => <button key={s} onClick={() => send(s)}>{s}</button>)}</div><form className="chat-input-row" onSubmit={e => { e.preventDefault(); send(); }}><button type="button" className="icon-button small" onClick={() => toast("File attachments will be supported in a later integration.")}><Paperclip size={17} /></button><input value={draft} onChange={e => setDraft(e.target.value)} placeholder="Ask your financial copilot..." /><button type="submit" className="send-button" disabled={!draft.trim()}><Send size={17} /></button></form></section><aside className="copilot-side"><SectionCard title="Suggested questions" subtitle="Start with one of these"><div className="question-list">{["Can I afford a ₹50,000 inventory order?", "Which invoices should I follow up on?", "What is changing my cash position?"].map(q => <button key={q} onClick={() => send(q)}>{q}<ArrowUpRight size={15} /></button>)}</div></SectionCard><div className="evidence-note"><ShieldAlert size={17} /><div><strong>Evidence before advice</strong><p>LedgerLens is designed to ground recommendations in transactions, invoices and forecast assumptions — not invented numbers.</p></div></div></aside></div></div>;
+  const [suggestions, setSuggestions] = useState(["Can I afford new inventory?", "What needs my attention?", "How much is overdue?"]);
+  const [sending, setSending] = useState(false);
+  const [source, setSource] = useState<"gemini" | "fallback" | null>(null);
+  useEffect(() => { getCopilotSuggestions().then(value => setSuggestions(value.chips)).catch(() => undefined); }, []);
+  const send = async (value = draft) => {
+    const question = value.trim(); if (!question || sending) return;
+    const history = messages;
+    setMessages(current => [...current, { role: "user", text: question }]); setDraft(""); setSending(true);
+    try {
+      const response = await sendCopilotMessage(question, history);
+      setMessages(current => [...current, { role: "assistant", text: response.reply }]); setSource(response.source);
+      if (response.suggested_questions?.length) setSuggestions(response.suggested_questions);
+    } catch (e) {
+      setMessages(current => [...current, { role: "assistant", text: e instanceof Error ? \`I couldn't reach the financial service: \${e.message}\` : "I couldn't reach the financial service. Please try again." }]);
+      toast.error("Copilot request failed");
+    } finally { setSending(false); }
+  };
+  return <div className="page-stack"><PageIntro title="Your AI financial copilot" description="Ask clearer questions. Make more confident decisions." /><div className="copilot-layout">
+    <section className="chat-panel"><div className="chat-header"><div className="cfo-avatar"><Sparkles size={18} /></div><div><strong>LedgerLens CFO</strong><span><i className="online-dot" /> {source === "gemini" ? "AI-assisted · Grounded in workspace data" : source === "fallback" ? "Verified fallback · Grounded in workspace data" : "Connected financial assistant"}</span></div><button className="icon-button small" onClick={() => { setMessages([{ role: "assistant", text: "Conversation cleared. What would you like to explore?" }]); setSource(null); }}><MoreHorizontal size={18} /></button></div>
+      <div className="chat-messages">{messages.map((m, i) => <div key={i} className={\`chat-message \${m.role}\`}><div className="message-avatar">{m.role === "assistant" ? <Sparkles size={15} /> : "US"}</div><div className="message-bubble">{m.text}</div></div>)}{sending && <div className="empty-state">Your AI CFO is checking the workspace…</div>}</div>
+      <div className="suggestion-row">{suggestions.map(s => <button key={s} disabled={sending} onClick={() => void send(s)}>{s}</button>)}</div>
+      <form className="chat-input-row" onSubmit={e => { e.preventDefault(); void send(); }}><button type="button" className="icon-button small" onClick={() => toast("Invoice uploads are available from the Invoices screen.")}><Paperclip size={17} /></button><input value={draft} onChange={e => setDraft(e.target.value)} placeholder="Ask your financial copilot…" /><button type="submit" className="send-button" disabled={!draft.trim() || sending}><Send size={17} /></button></form>
+    </section><aside className="copilot-side"><SectionCard title="Suggested questions" subtitle="Start with one of these"><div className="question-list">{["Can I afford a ₹50,000 inventory order?", "Which invoices should I follow up on?", "What is changing my cash position?"].map(q => <button key={q} onClick={() => void send(q)}>{q}<ArrowUpRight size={15} /></button>)}</div></SectionCard><div className="evidence-note"><ShieldAlert size={17} /><div><strong>Evidence before advice</strong><p>Responses are grounded in the platform's financial records. If AI generation is unavailable, a verified fallback response is used.</p></div></div></aside>
+  </div></div>;
 }
 
-function Receivables({ invoices, markPaid }: { invoices: typeof initialInvoices; markPaid: (id: string) => void }) {
-  const outstanding = invoices.filter(i => i.status !== "Paid").reduce((s, i) => s + i.amount, 0);
-  return <div className="page-stack"><PageIntro title="Receivables" description="A gentle nudge today can make tomorrow's cash flow easier." /><div className="metrics-grid compact-metrics"><MetricCard label="Outstanding" value={money(outstanding)} note="Open sample invoices" icon={Wallet} /><MetricCard label="Overdue accounts" value={String(invoices.filter(i => i.status === "Overdue").length)} note="Need a follow-up" icon={Clock3} tone="coral" /><MetricCard label="Collection progress" value="62%" note="Illustrative month-to-date" icon={Activity} tone="sage" /></div><SectionCard title="Who owes you" subtitle="Open invoices and follow-up actions"><div className="receivable-list">{invoices.filter(i => i.status !== "Paid").map(i => <div className="receivable-row" key={i.id}><div className="client-avatar">{i.client.slice(0,1)}</div><div className="receivable-client"><strong>{i.client}</strong><span>{i.id} · Due {i.due}</span></div><div className="receivable-amount"><strong>{money(i.amount)}</strong><span className={i.status === "Overdue" ? "negative-change" : "muted-text"}>{i.status}</span></div><button className="button button-small button-outline" onClick={() => toast(`A reminder draft for ${i.client} will be available after backend integration.`)}>Draft reminder</button><button className="button button-small button-primary" onClick={() => markPaid(i.id)}>Mark paid</button></div>)}</div></SectionCard><div className="inline-note"><AlertCircle size={15} /> Marking an invoice paid updates this local preview only. The connected backend will update authoritative balances and forecasts.</div></div>;
+function Receivables() {
+  const [data, setData] = useState<Awaited<ReturnType<typeof getReceivables>> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState("");
+  const refresh = async () => setData(await getReceivables());
+  useEffect(() => { let active = true; getReceivables().then(value => { if (active) setData(value); }).catch(e => toast.error(e instanceof Error ? e.message : "Could not load receivables")).finally(() => { if (active) setLoading(false); }); return () => { active = false; }; }, []);
+  const paid = async (id: string) => {
+    setBusyId(id);
+    try { await markInvoicePaid(id); await refresh(); toast.success("Receivable marked as paid."); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Could not update receivable"); }
+    finally { setBusyId(""); }
+  };
+  return <div className="page-stack"><PageIntro title="Receivables" description="A gentle nudge today can make tomorrow's cash flow easier." />
+    <div className="metrics-grid compact-metrics"><MetricCard label="Outstanding" value={data ? money(data.outstanding_total) : "—"} note="Unpaid invoices" icon={Wallet} /><MetricCard label="Overdue accounts" value={data ? String(data.overdue_count) : "—"} note="Need a follow-up" icon={Clock3} tone="coral" /><MetricCard label="Collection progress" value={data ? \`\${data.collection_progress_pct}%\` : "—"} note="Period-to-date" icon={Activity} tone="sage" /></div>
+    {data && <SectionCard title="Receivables ageing" subtitle="Outstanding amounts grouped by days overdue"><div className="aging-list">{data.aging_buckets.map(bucket => <div className="commitment-row" key={bucket.label}><span>{bucket.label} · {bucket.count} invoice(s)</span><strong>{money(bucket.amount)}</strong></div>)}</div></SectionCard>}
+    <SectionCard title="Who owes you" subtitle="Open invoices and follow-up actions">{loading ? <div className="empty-state">Loading receivables…</div> : data?.items.length ? <div className="receivable-list">{data.items.map(i => <div className="receivable-row" key={i.id}><div className="client-avatar">{i.client.slice(0,1)}</div><div className="receivable-client"><strong>{i.client}</strong><span>{i.id} · Due {formatApiDate(i.due_date)}</span></div><div className="receivable-amount"><strong>{money(i.amount)}</strong><span className={i.status === "Overdue" ? "negative-change" : "muted-text"}>{i.status}{i.days_overdue > 0 ? \` · \${i.days_overdue} days late\` : ""}</span></div><button className="button button-small button-primary" disabled={busyId === i.id} onClick={() => void paid(i.id)}>{busyId === i.id ? "Saving…" : "Mark paid"}</button></div>)}</div> : <div className="empty-state">No outstanding receivables.</div>}</SectionCard>
+    <div className="inline-note"><AlertCircle size={15} /> Marking an invoice paid updates the backend, so the invoice register, receivables and dashboard can stay in sync.</div>
+  </div>;
 }
 
 function OverviewFooter() {
@@ -316,21 +429,19 @@ export default function App() {
   }, []);
   const [transactions, setTransactions] = useState(initialTransactions);
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
-  const [invoices, setInvoices] = useState(initialInvoices);
   const addTransaction = (t: Transaction) => { setTransactions(old => [t, ...old]); };
-  const markPaid = (id: string) => { setInvoices(old => old.map(i => i.id === id ? { ...i, status: "Paid" } : i)); toast.success("Invoice marked as paid in this preview."); };
   const pageContent = useMemo(() => {
     switch (page) {
       case "Overview": return <Overview setPage={setPage} transactions={transactions} dashboard={dashboard} />;
       case "Transactions": return <Transactions addTransaction={addTransaction} />;
       case "Cash Flow": return <CashFlow />;
       case "What-If Simulator": return <Simulator />;
-      case "Invoices": return <Invoices invoices={invoices} markPaid={markPaid} />;
+      case "Invoices": return <Invoices />;
       case "Risk Radar": return <RiskRadar />;
       case "AI Financial Copilot": return <Copilot />;
-      case "Receivables": return <Receivables invoices={invoices} markPaid={markPaid} />;
+      case "Receivables": return <Receivables />;
       default: return null;
     }
-  }, [page, transactions, invoices]);
+  }, [page, transactions, dashboard]);
   return <div className="app-shell"><Toaster position="top-right" richColors /><Sidebar page={page} setPage={setPage} open={menuOpen} close={() => setMenuOpen(false)} /><main className="main-area"><Header page={page} onMenu={() => setMenuOpen(true)} /><div className="page-container">{pageContent}<OverviewFooter /></div></main></div>;
 }
