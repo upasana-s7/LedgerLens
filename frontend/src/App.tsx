@@ -135,7 +135,7 @@ function Overview({ setPage, transactions, dashboard }: { setPage: (p: Page) => 
         <div className="cfo-intro"><div className="cfo-avatar"><Sparkles size={18} /></div><div><strong>One thing worth your attention</strong><span>{dashboard?.ai_cfo.updated_at ? `Updated ${new Date(dashboard.ai_cfo.updated_at).toLocaleString("en-IN")}` : "Sample insight"}</span></div></div>
         <div className="cfo-highlight"><span className="risk-tag">{dashboard?.ai_cfo.tag ?? "CASH FLOW WATCH"}</span><h3>{dashboard?.ai_cfo.title ?? "Two invoices are past due."}</h3><p>{dashboard?.ai_cfo.body ?? "₹85,000 is outstanding across two customers. Following up this week could give your December cash position more breathing room."}</p></div>
         <button className="button button-outline full-button" onClick={() => setPage("AI Financial Copilot")}>Talk to your AI CFO <ArrowRight size={15} /></button>
-        <div className="cfo-foot"><CheckCircle2 size={14} /> Recommendations are linked to sample financial records.</div>
+        <div className="cfo-foot"><CheckCircle2 size={14} /> Recommendations are grounded in the connected workspace records.</div>
       </SectionCard>
     </div>
     <div className="lower-grid">
@@ -143,7 +143,7 @@ function Overview({ setPage, transactions, dashboard }: { setPage: (p: Page) => 
         <TransactionTable transactions={recentTransactions} />
       </SectionCard>
       <SectionCard title="Risk radar" subtitle="A few things to keep on your radar" action={<button className="text-action" onClick={() => setPage("Risk Radar")}>See all <ArrowUpRight size={14} /></button>}>
-        <div className="risk-list"><RiskItem tone="coral" title="Overdue customer invoices" detail="2 invoices · ₹85,000 outstanding" /><RiskItem tone="amber" title="Supplier price increase" detail="FreshKart costs rose by 12%" /><RiskItem tone="sage" title="December cash buffer" detail="Review inventory purchases before month-end" /></div>
+        <div className="risk-list">{dashboard?.risk_items?.length ? dashboard.risk_items.map((item, index) => <RiskItem key={`${item.title}-${index}`} tone={item.tone} title={item.title} detail={item.detail} />) : <div className="empty-state">Risk highlights will appear when dashboard data is available.</div>}</div>
       </SectionCard>
     </div>
   </div>;
@@ -337,7 +337,7 @@ function Invoices() {
     </SectionCard>}
     <div className="metrics-grid compact-metrics"><MetricCard label="Total outstanding" value={data ? money(data.summary.total_outstanding) : "—"} note={data ? \`Across \${data.summary.outstanding_count} invoices\` : "Loading"} icon={FileText} /><MetricCard label="Overdue" value={data ? money(data.summary.overdue_total) : "—"} note="Needs follow-up" icon={Clock3} tone="coral" /><MetricCard label="Collected this month" value={data ? money(data.summary.collected_this_month) : "—"} note="Payments received" icon={CheckCircle2} tone="sage" /></div>
     <SectionCard title="Invoice register" subtitle={data ? \`\${data.items.length} records from your workspace\` : "Connected invoice records"}>
-      {loading ? <div className="empty-state">Loading invoices…</div> : data?.items.length ? <div className="invoice-list">{data.items.map(inv => <div className="invoice-row" key={inv.id}><div className="invoice-file-icon"><FileText size={19} /></div><div className="invoice-main"><strong>{inv.id} · {inv.client}</strong><span>Due {formatApiDate(inv.due_date)}</span></div><strong className="invoice-amount">{money(inv.amount)}</strong><span className={\`status-pill \${inv.status === "Overdue" ? "status-overdue" : inv.status === "Paid" ? "status-paid" : "status-pending"}\`}>{inv.status}</span>{inv.status !== "Paid" && <button className="button button-small button-outline" disabled={busyId === inv.id} onClick={() => void paid(inv.id)}>{busyId === inv.id ? "Saving…" : "Mark paid"}</button>}</div>)}</div> : <div className="empty-state">No invoices returned by the API.</div>}
+      {loading ? <div className="empty-state">Loading invoices…</div> : data?.items.length ? <div className="invoice-list">{data.items.map(inv => <div className="invoice-row" key={inv.id}><div className="invoice-file-icon"><FileText size={19} /></div><div className="invoice-main"><strong>{inv.id} · {inv.client}</strong><span>Due {formatApiDate(inv.due_date)}</span></div><strong className="invoice-amount">{money(inv.amount)}</strong><span className={\`status-pill \${inv.status === "Overdue" ? "status-overdue" : inv.status === "Paid" ? "status-paid" : "status-pending"}\`}>{inv.status}</span>{inv.status !== "Paid" && inv.status !== "Draft" && <button className="button button-small button-outline" disabled={busyId === inv.id} onClick={() => void paid(inv.id)}>{busyId === inv.id ? "Saving…" : "Mark paid"}</button>}</div>)}</div> : <div className="empty-state">No invoices returned by the API.</div>}
     </SectionCard><div className="inline-note"><AlertCircle size={15} /> Uploaded invoice details are suggestions. Always review extracted fields before confirming them.</div></div>;
 }
 
@@ -364,16 +364,17 @@ function Copilot() {
   const [messages, setMessages] = useState<CopilotMessage[]>([{ role: "assistant", text: "Hello! I'm your LedgerLens AI CFO. Ask me about cash flow, receivables or a business decision." }]);
   const [draft, setDraft] = useState("");
   const [suggestions, setSuggestions] = useState(["Can I afford new inventory?", "What needs my attention?", "How much is overdue?"]);
+  const [panelQuestions, setPanelQuestions] = useState(["Can I afford a Rs 50,000 inventory order?", "Which invoices should I follow up on?", "What is changing my cash position?"]);
   const [sending, setSending] = useState(false);
   const [source, setSource] = useState<"gemini" | "fallback" | null>(null);
-  useEffect(() => { getCopilotSuggestions().then(value => setSuggestions(value.chips)).catch(() => undefined); }, []);
+  useEffect(() => { getCopilotSuggestions().then(value => { setSuggestions(value.chips); setPanelQuestions(value.panel); }).catch(() => undefined); }, []);
   const send = async (value = draft) => {
     const question = value.trim(); if (!question || sending) return;
     const history = messages;
     setMessages(current => [...current, { role: "user", text: question }]); setDraft(""); setSending(true);
     try {
       const response = await sendCopilotMessage(question, history);
-      setMessages(current => [...current, { role: "assistant", text: response.reply }]); setSource(response.source);
+      setMessages(current => [...current, { role: "assistant", text: response.reply + (response.citations.length ? `\n\nSources: ${response.citations.map(citation => citation.label).join(" · ")}` : "") }]); setSource(response.source);
       if (response.suggested_questions?.length) setSuggestions(response.suggested_questions);
     } catch (e) {
       setMessages(current => [...current, { role: "assistant", text: e instanceof Error ? \`I couldn't reach the financial service: \${e.message}\` : "I couldn't reach the financial service. Please try again." }]);
@@ -385,7 +386,7 @@ function Copilot() {
       <div className="chat-messages">{messages.map((m, i) => <div key={i} className={\`chat-message \${m.role}\`}><div className="message-avatar">{m.role === "assistant" ? <Sparkles size={15} /> : "US"}</div><div className="message-bubble">{m.text}</div></div>)}{sending && <div className="empty-state">Your AI CFO is checking the workspace…</div>}</div>
       <div className="suggestion-row">{suggestions.map(s => <button key={s} disabled={sending} onClick={() => void send(s)}>{s}</button>)}</div>
       <form className="chat-input-row" onSubmit={e => { e.preventDefault(); void send(); }}><button type="button" className="icon-button small" onClick={() => toast("Invoice uploads are available from the Invoices screen.")}><Paperclip size={17} /></button><input value={draft} onChange={e => setDraft(e.target.value)} placeholder="Ask your financial copilot…" /><button type="submit" className="send-button" disabled={!draft.trim() || sending}><Send size={17} /></button></form>
-    </section><aside className="copilot-side"><SectionCard title="Suggested questions" subtitle="Start with one of these"><div className="question-list">{["Can I afford a ₹50,000 inventory order?", "Which invoices should I follow up on?", "What is changing my cash position?"].map(q => <button key={q} onClick={() => void send(q)}>{q}<ArrowUpRight size={15} /></button>)}</div></SectionCard><div className="evidence-note"><ShieldAlert size={17} /><div><strong>Evidence before advice</strong><p>Responses are grounded in the platform's financial records. If AI generation is unavailable, a verified fallback response is used.</p></div></div></aside>
+    </section><aside className="copilot-side"><SectionCard title="Suggested questions" subtitle="Start with one of these"><div className="question-list">{panelQuestions.map(q => <button key={q} onClick={() => void send(q)}>{q}<ArrowUpRight size={15} /></button>)}</div></SectionCard><div className="evidence-note"><ShieldAlert size={17} /><div><strong>Evidence before advice</strong><p>Responses are grounded in the platform's financial records. If AI generation is unavailable, a verified fallback response is used.</p></div></div></aside>
   </div></div>;
 }
 
