@@ -17,8 +17,10 @@ Every rule is a pure function of the database plus the business profile:
 6. **Commitment cluster** - seven days of scheduled payments holding more than
    40% of current cash.
 
-The `risk_score` is a severity-weighted count, not a probability: 30 points per
-high alert, 15 per medium, 5 per low, capped at 100.
+The `risk_score` is a severity-weighted count, not a probability: 25 points per
+high alert, 10 per medium, 5 per low, capped at 100. The weights deliberately
+leave headroom: with the seeded data (2 high, 3 medium, 1 low) the score is 85,
+so the badge can still move before it pins at the cap.
 
 Alerts are **not persisted**. The `risk_alerts` table is deliberately left for
 later (an audit trail of what was shown when); recomputing on every call keeps
@@ -50,7 +52,7 @@ MAX_ALERTS = 8
 
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 TONE_BY_SEVERITY = {"high": "coral", "medium": "amber", "low": "sage"}
-SEVERITY_WEIGHT = {"high": 30, "medium": 15, "low": 5}
+SEVERITY_WEIGHT = {"high": 25, "medium": 10, "low": 5}
 
 # Rule 1: overdue receivables are "high" once they exceed 30% of the buffer.
 OVERDUE_HIGH_SHARE = Decimal("0.3")
@@ -84,12 +86,30 @@ def _money(value) -> Decimal:
 
 
 def _rs(value) -> str:
-    """Format rupees for display, e.g. "Rs 1,64,500" -> "Rs 164,500".
+    """Format rupees for running prose, e.g. "Rs 164,500".
 
-    Western grouping is used on purpose: `metric` is printed verbatim by the
-    frontend, and plain "Rs" avoids any terminal encoding surprises.
+    Body text keeps western grouping for readability. `metric` and
+    `impact_value` are short display fields read at a glance, so they use
+    `format_metric_inr` instead. Plain "Rs" avoids encoding surprises.
     """
     return f"Rs {float(value):,.0f}"
+
+
+def format_metric_inr(n: float) -> str:
+    """Indian-grouped INR: 85000 -> 'Rs 85,000'; 164500 -> 'Rs 1,64,500'."""
+    value = float(n)
+    sign = "-" if value < 0 else ""
+    digits = str(int(round(abs(value))))
+    if len(digits) > 3:
+        head, tail = digits[:-3], digits[-3:]
+        groups: list[str] = []
+        while len(head) > 2:
+            groups.insert(0, head[-2:])
+            head = head[:-2]
+        if head:
+            groups.insert(0, head)
+        digits = ",".join(groups + [tail])
+    return f"Rs {sign}{digits}"
 
 
 def _metric_number(metric: str) -> float:
@@ -170,7 +190,7 @@ def _rule_overdue_receivables(
             severity=severity,
             title="Overdue customer invoices",
             subtitle=f"{len(overdue)} invoice(s) past due",
-            metric=_rs(total),
+            metric=format_metric_inr(total),
             body=(
                 f"You have {_rs(total)} sitting in {len(overdue)} overdue "
                 f"invoice(s). The oldest is {oldest.client}'s {oldest.id}, due "
@@ -213,7 +233,7 @@ def _rule_forecast_shortfall(db: Session, min_buffer: Decimal) -> list[_Trigger]
             subtitle=(
                 f"Forecast dips below {_rs(min_buffer)} on {forecast.shortfall_date}"
             ),
-            metric=f"Lowest: {_rs(lowest_value)}",
+            metric=f"Lowest: {format_metric_inr(lowest_value)}",
             body=(
                 f"The 30-day forecast shows your balance falling below the "
                 f"{_rs(min_buffer)} safety buffer on {forecast.shortfall_date}. "
@@ -222,7 +242,7 @@ def _rule_forecast_shortfall(db: Session, min_buffer: Decimal) -> list[_Trigger]
                 "close the gap."
             ),
             impact_label="Buffer shortfall",
-            impact_value=f"{_rs(gap)} below floor",
+            impact_value=f"{format_metric_inr(gap)} below floor",
             action_label="Review upcoming commitments",
             evidence=[
                 EvidencePointer(
@@ -286,7 +306,7 @@ def _rule_duplicate_payment(db: Session, as_of: dt.date) -> list[_Trigger]:
             severity="medium",
             title="Duplicate payment suspicion",
             subtitle=f"{len(duplicates)} pair(s) worth {_rs(total_dup)}",
-            metric=_rs(total_dup),
+            metric=format_metric_inr(total_dup),
             body=(
                 f"Found {len(duplicates)} potential duplicate payment(s). The "
                 f"largest is {_rs(abs(_money(largest[0].amount)))} paid on "
@@ -294,7 +314,7 @@ def _rule_duplicate_payment(db: Session, as_of: dt.date) -> list[_Trigger]:
                 "vendor before the next payment cycle."
             ),
             impact_label="Potential overpayment",
-            impact_value=f"Up to {_rs(total_dup)}",
+            impact_value=f"Up to {format_metric_inr(total_dup)}",
             action_label="Verify with vendor",
             evidence=[
                 EvidencePointer(
@@ -350,7 +370,7 @@ def _rule_unusual_expense_size(db: Session, as_of: dt.date) -> list[_Trigger]:
             severity="medium",
             title="Unusually large expenses",
             subtitle=f"{len(flagged)} transaction(s) above {_rs(UNUSUAL_MIN_AMOUNT)}",
-            metric=_rs(total),
+            metric=format_metric_inr(total),
             body=(
                 f"{len(flagged)} expense(s) in the last 90 days were more than "
                 "twice the typical amount for their category. The largest was "
@@ -358,7 +378,7 @@ def _rule_unusual_expense_size(db: Session, as_of: dt.date) -> list[_Trigger]:
                 f"{largest.date}. Confirm these were planned and budgeted."
             ),
             impact_label="One-off cash impact",
-            impact_value=f"{_rs(total)} total",
+            impact_value=f"{format_metric_inr(total)} total",
             action_label="Review one-off expenses",
             evidence=[
                 EvidencePointer(
@@ -410,6 +430,7 @@ def _rule_category_spend_trend(db: Session, as_of: dt.date) -> list[_Trigger]:
         return []
 
     category, pct, avg_recent, avg_prior = max(rising, key=lambda item: item[1])
+    monthly_excess = _money((avg_recent - avg_prior) * TREND_RECENT_DAYS)
 
     return [
         _Trigger(
@@ -419,12 +440,12 @@ def _rule_category_spend_trend(db: Session, as_of: dt.date) -> list[_Trigger]:
             metric=f"+{float(pct):.0f}%",
             body=(
                 f"{category} costs are up {float(pct):.0f}% in the last 30 days "
-                f"compared to the prior 60-day average. At this rate, annual "
-                f"{category.lower()} spend will be "
-                f"{_rs((avg_recent - avg_prior) * 365)} higher than baseline."
+                f"compared to the prior 60-day average. At this pace, the next "
+                f"30 days will add about {_rs(monthly_excess)} more than a "
+                "typical month. Verify these increases are planned and budgeted."
             ),
             impact_label="Run-rate increase",
-            impact_value=f"+{_rs((avg_recent - avg_prior) * 30)} per month",
+            impact_value=f"+{format_metric_inr(monthly_excess)} vs baseline",
             action_label="Review supplier pricing",
             # A trend is a category-level pattern, so there is no single record
             # to point at. An empty list is honest; the UI shows no deep link.
@@ -489,14 +510,14 @@ def _rule_commitment_cluster(
             severity="medium",
             title="Commitment cluster ahead",
             subtitle=f"{_rs(best_sum)} due between {window_start} and {window_end}",
-            metric=_rs(best_sum),
+            metric=format_metric_inr(best_sum),
             body=(
                 f"{len(in_window)} payments totalling {_rs(best_sum)} fall within "
                 "7 days, more than 40% of your current cash. Stagger what you "
                 "can, or time collections to land before this window."
             ),
             impact_label="Concentrated outflows",
-            impact_value=f"{_rs(best_sum)} in 7 days",
+            impact_value=f"{format_metric_inr(best_sum)} in 7 days",
             action_label="Stagger payments if possible",
             evidence=[
                 EvidencePointer(

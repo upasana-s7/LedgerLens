@@ -545,7 +545,7 @@ same handler, so the Receivables screen and the Invoices screen agree.
       "tone": "coral",
       "title": "Projected cash buffer breach",
       "subtitle": "Forecast dips below Rs 150,000 on 2026-12-07",
-      "metric": "Lowest: Rs 129,296",
+      "metric": "Lowest: Rs 1,29,296",
       "body": "The 30-day forecast shows your balance falling below the Rs 150,000 safety buffer on 2026-12-07. The bottom point is Rs 129,296 on 2026-12-18. Reducing upcoming outflows or accelerating collections will close the gap.",
       "impact_label": "Buffer shortfall",
       "impact_value": "Rs 20,704 below floor",
@@ -578,10 +578,10 @@ same handler, so the Receivables screen and the Invoices screen agree.
       "tone": "amber",
       "title": "Commitment cluster ahead",
       "subtitle": "Rs 164,500 due between 2026-12-01 and 2026-12-07",
-      "metric": "Rs 164,500",
+      "metric": "Rs 1,64,500",
       "body": "4 payments totalling Rs 164,500 fall within 7 days, more than 40% of your current cash. Stagger what you can, or time collections to land before this window.",
       "impact_label": "Concentrated outflows",
-      "impact_value": "Rs 164,500 in 7 days",
+      "impact_value": "Rs 1,64,500 in 7 days",
       "action_label": "Stagger payments if possible",
       "evidence": [
         { "kind": "commitment", "id": "Monthly rent", "label": "Monthly rent · Rs 22,000 on 2026-12-01" },
@@ -628,14 +628,14 @@ same handler, so the Receivables screen and the Invoices screen agree.
       "title": "General spend rising",
       "subtitle": "General up 188% month-over-month",
       "metric": "+188%",
-      "body": "General costs are up 188% in the last 30 days compared to the prior 60-day average. At this rate, annual general spend will be Rs 907,858 higher than baseline.",
+      "body": "General costs are up 188% in the last 30 days compared to the prior 60-day average. At this pace, the next 30 days will add about Rs 74,618 more than a typical month. Verify these increases are planned and budgeted.",
       "impact_label": "Run-rate increase",
-      "impact_value": "+Rs 74,618 per month",
+      "impact_value": "+Rs 74,618 vs baseline",
       "action_label": "Review supplier pricing",
       "evidence": []
     }
   ],
-  "risk_score": 100
+  "risk_score": 85
 }
 ```
 

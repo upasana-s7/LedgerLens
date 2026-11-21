@@ -104,6 +104,21 @@ def test_risk_score_bounded(risk):
     assert 0 <= risk["risk_score"] <= 100
 
 
+def test_risk_score_matches_severity_weights(risk):
+    """High 25 + medium 10 + low 5: the seeded 2H+3M+1L set scores 85."""
+    weights = {"high": 25, "medium": 10, "low": 5}
+    expected = min(
+        100, sum(weights[alert["severity"]] for alert in risk["alerts"])
+    )
+    assert risk["risk_score"] == expected
+    assert risk["risk_score"] == 85
+
+
+def test_risk_score_below_cap(risk):
+    """Headroom matters: the seeded data must not already pin the cap."""
+    assert 0 <= risk["risk_score"] < 100
+
+
 def test_attention_count_matches_high_and_medium(risk):
     """attention_count is the number of alerts that need action."""
     expected = sum(
@@ -208,6 +223,36 @@ def test_category_trend_alert_or_skip(risk, seeded_db):
     else:
         # No category cleared the 20% bar, so the rule correctly stayed quiet.
         assert max(mom.values(), default=0.0) <= 20.0
+
+
+def test_metric_uses_indian_grouping(risk):
+    """Display metrics group 2-3-3: the December cluster is Rs 1,64,500."""
+    alert = _alert_with(risk, "cluster")
+    assert alert is not None
+    assert alert["metric"] == "Rs 1,64,500"
+    assert alert["impact_value"] == "Rs 1,64,500 in 7 days"
+
+    buffer_alert = _alert_with(risk, "buffer")
+    assert buffer_alert is not None
+    assert buffer_alert["metric"] == "Lowest: Rs 1,29,296"
+
+
+def test_rule5_body_does_not_contain_annual(risk):
+    """The old annual extrapolation was misleading; it must not come back."""
+    for alert in risk["alerts"]:
+        assert not re.search(r"annual\b.*\bspend", alert["body"], re.IGNORECASE)
+        assert "annual" not in alert["body"].lower()
+
+
+def test_rule5_body_mentions_next_30_days(risk):
+    """Rule 5 now talks about the next 30 days vs a typical month."""
+    trend_alerts = [
+        alert for alert in risk["alerts"] if alert["title"].endswith("spend rising")
+    ]
+    if not trend_alerts:
+        pytest.skip("no trend alert fired with this seed")
+    assert "next 30 days" in trend_alerts[0]["body"]
+    assert "more than a typical month" in trend_alerts[0]["body"]
 
 
 # ---------------------------------------------------------------------------
