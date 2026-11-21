@@ -79,3 +79,70 @@ export function uploadTransactions(file: File): Promise<CsvUploadResponse> {
   const form = new FormData(); form.append("file", file);
   return request<CsvUploadResponse>("/transactions/upload", { method: "POST", body: form });
 }
+
+
+export interface SimulatorResponse {
+  base_balance: number; scenario_cost: number; additional_revenue: number;
+  projected_balance: number; verdict: string; verdict_label: string;
+  threshold: number; explanation: string; explanation_source: string;
+}
+export function runSimulator(input: { purchase_amount: number; revenue_uplift_pct: number }): Promise<SimulatorResponse> {
+  return request<SimulatorResponse>("/simulator/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
+}
+
+export interface RiskEvidence { kind: string; id: string; label: string; }
+export interface RiskAlert {
+  id: string; severity: string; tone: string; title: string; subtitle: string;
+  metric: string; body: string; impact_label: string; impact_value: string;
+  action_label: string; evidence: RiskEvidence[];
+}
+export interface RiskAlertsResponse {
+  summary: { attention_count: number; note: string; tag: string };
+  alerts: RiskAlert[];
+}
+export function getRiskAlerts(): Promise<RiskAlertsResponse> { return request<RiskAlertsResponse>("/risk/alerts"); }
+
+export interface CopilotMessage { role: "user" | "assistant"; text: string; }
+export interface CopilotChatResponse {
+  reply: string; suggested_questions: string[];
+  citations: { kind: string; id: string; label: string }[];
+  source: "gemini" | "fallback";
+}
+export interface CopilotSuggestionsResponse { chips: string[]; panel: string[]; }
+export function getCopilotSuggestions(): Promise<CopilotSuggestionsResponse> { return request<CopilotSuggestionsResponse>("/copilot/suggestions"); }
+export function sendCopilotMessage(message: string, history: CopilotMessage[]): Promise<CopilotChatResponse> {
+  return request<CopilotChatResponse>("/copilot/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, history: history.slice(-8) }) });
+}
+
+export interface Invoice {
+  id: string; client: string; due_date: string; amount: number;
+  status: "Draft" | "Pending" | "Overdue" | "Paid"; days_overdue: number;
+}
+export interface InvoicesResponse {
+  summary: { total_outstanding: number; outstanding_count: number; overdue_total: number; collected_this_month: number };
+  items: Invoice[];
+}
+export interface InvoiceUploadResponse {
+  id: string; status: "Draft"; fields: { client: string; due_date: string; amount: number; invoice_number: string };
+  confidence: number; warnings: string[];
+}
+export interface InvoiceConfirmResponse { id: string; status: string; invoice: Invoice; }
+export interface MarkPaidResponse { id: string; status: "Paid"; paid_at: string; outstanding_total: number; overdue_count: number; }
+export function getInvoices(): Promise<InvoicesResponse> { return request<InvoicesResponse>("/invoices"); }
+export function uploadInvoice(file: File): Promise<InvoiceUploadResponse> {
+  const form = new FormData(); form.append("file", file);
+  return request<InvoiceUploadResponse>("/invoices/upload", { method: "POST", body: form });
+}
+export function confirmInvoice(id: string, input: { client: string; due_date: string; amount: number; invoice_number: string }): Promise<InvoiceConfirmResponse> {
+  return request<InvoiceConfirmResponse>(`/invoices/${encodeURIComponent(id)}/confirm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
+}
+export function markInvoicePaid(id: string): Promise<MarkPaidResponse> {
+  return request<MarkPaidResponse>(`/invoices/${encodeURIComponent(id)}/mark-paid`, { method: "POST" });
+}
+
+export interface ReceivablesResponse {
+  outstanding_total: number; overdue_count: number; collection_progress_pct: number;
+  aging_buckets: { label: string; count: number; amount: number }[];
+  items: Invoice[];
+}
+export function getReceivables(): Promise<ReceivablesResponse> { return request<ReceivablesResponse>("/receivables"); }
