@@ -27,6 +27,7 @@ from app.schemas.dashboard import (
     Workspace,
 )
 from app.schemas.transaction import TransactionResponse
+from app.services.forecast import build_forecast
 from app.services.transactions import AS_OF_DATE
 
 TWO_PLACES = Decimal("0.01")
@@ -123,23 +124,6 @@ def _overdue_receivables(db: Session) -> tuple[Decimal, int]:
     return _money(total), len(rows)
 
 
-def _avg_daily_net_flow(db: Session, days: int = 90) -> Decimal:
-    """Average daily NET cash flow over the last `days` days.
-
-    This sums every signed amount (income is positive, expenses are already
-    negative), so one number captures money in AND money out. The window is
-    inclusive on both ends: AS_OF_DATE - days + 1 .. AS_OF_DATE.
-    """
-    start = AS_OF_DATE - dt.timedelta(days=days - 1)
-    total = db.scalar(
-        select(func.sum(Transaction.amount)).where(
-            Transaction.date >= start,
-            Transaction.date <= AS_OF_DATE,
-        )
-    )
-    return _money(_money(total) / days)
-
-
 def _commitments_due(db: Session, days: int = 30) -> Decimal:
     """Known payments due in the next `days` days (tomorrow .. +30).
 
@@ -157,19 +141,19 @@ def _commitments_due(db: Session, days: int = 30) -> Decimal:
 
 
 def _projected_30d(db: Session, days: int = 30) -> Decimal:
-    """Expected closing balance `days` out, based on the net cash-flow trend.
+    """Closing balance `days` out, taken straight from the forecast engine.
 
-    Formula: current_balance + (avg_daily_net_flow x 30).
-
-    Why net flow and not gross income: the 90-day window behind the average
-    already contains rent, payroll, EMI, utilities and GST as negative
-    transactions. Subtracting `_commitments_due` on top of that would
-    double-count those outgoings and understate the projection.
-
-    Stage 3.1 only needs a defensible placeholder; Stage 4 replaces this with
-    a proper day-by-day forecast engine.
+    The Overview card and the Cash Flow screen must never disagree, so this
+    does not run its own arithmetic any more: it asks Stage 4's day-by-day
+    projection for the same day's balance. With the seeded data that is also
+    the lowest point of the month, because December's rent, payroll, EMI and
+    vendor payables all land inside the window.
     """
-    return _money(_current_balance(db) + _avg_daily_net_flow(db) * days)
+    forecast = build_forecast(db, days=days)
+    if not forecast.daily_series:
+        # Defensive only: `days` is validated to 30..180 by the router.
+        return _current_balance(db)
+    return _money(forecast.daily_series[-1].balance)
 
 
 def _safe_to_spend(db: Session) -> Decimal:

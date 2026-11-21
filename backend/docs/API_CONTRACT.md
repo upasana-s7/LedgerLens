@@ -93,13 +93,13 @@ cash-flow chart, the AI CFO card, risk highlights and recent activity.
       "value": 342500, "change": "+8.2%", "note": "vs. last month", "tone": "green"
     },
     "projected_30d": {
-      "value": 379013.3, "change": "Based on forecast", "note": "estimated closing balance", "tone": "sage"
+      "value": 130513.34, "change": "Based on forecast", "note": "estimated closing balance", "tone": "amber"
     },
     "overdue_receivables": {
       "value": 85000, "change": "2 invoices", "note": "awaiting payment", "tone": "amber"
     },
     "safe_to_spend": {
-      "value": 229013.3, "change": "After commitments", "note": "available for decisions", "tone": "coral"
+      "value": -19486.66, "change": "After commitments", "note": "available for decisions", "tone": "coral"
     }
   },
   "cashflow_series": [
@@ -227,25 +227,31 @@ response.
 ```json
 {
   "opening_balance": 342500,
-  "inflows_30d": 181265.33,
-  "outflows_30d": 248500,
+  "inflows_30d": 338998.67,
+  "outflows_30d": 550985.33,
   "series": [
     { "month": "Jun", "month_iso": "2026-06", "actual": 310000, "forecast": 310000 },
     { "month": "Nov", "month_iso": "2026-11", "actual": 342500, "forecast": 342500 },
-    { "month": "Dec", "month_iso": "2026-12", "actual": null,   "forecast": 289531.46 },
-    { "month": "Feb", "month_iso": "2027-02", "actual": null,   "forecast": 507173.28 }
+    { "month": "Dec", "month_iso": "2026-12", "actual": null,   "forecast": 115118.67 },
+    { "month": "Feb", "month_iso": "2027-02", "actual": null,   "forecast": 186928.23 }
   ],
   "daily_series": [
-    { "date": "2026-11-20", "balance": 346188.84 },
-    { "date": "2027-02-17", "balance": 466596 }
+    { "date": "2026-11-20", "balance": 343717.11 },
+    { "date": "2027-02-17", "balance": 173540.01 }
   ],
   "range_label": "Jun 2026 — Feb 2027",
   "commitments": [
     { "label": "Monthly rent", "amount": 22000, "date": "2026-12-01" }
   ],
-  "assumptions": ["string"],
-  "lowest_balance": { "value": 263999.2, "date": "2026-12-07" },
-  "shortfall_date": null,
+  "assumptions": [
+    "Baseline daily net flow: Rs 1,217 (derived from 90-day historical average; already includes typical rent, payroll, EMI, utilities and vendor payments)",
+    "Scheduled commitments are applied as lump-sum outflows on their due dates (conservative upper bound on near-term outflows)",
+    "Safety buffer: Rs 150,000",
+    "Projection horizon: 90 days",
+    "Model intentionally overstates near-term outflows because historical recurring payments are also averaged in the baseline"
+  ],
+  "lowest_balance": { "value": 111467.34, "date": "2026-12-28" },
+  "shortfall_date": "2026-12-07",
   "is_sample_data": true
 }
 ```
@@ -259,7 +265,17 @@ response.
   though transaction amounts for expenses are negative.
 - `inflows_30d` / `outflows_30d` always cover the first 30 days of the
   projection, whatever `days` was requested, and are built from the same daily
-  model as `daily_series`.
+  model as `daily_series`: `outflows_30d` = 30 days of routine outflow **plus**
+  the commitments due in those 30 days, so the two numbers still net to the
+  change in balance.
+- The model is one 90-day average **net** flow per day, plus commitments as
+  lump sums on their due dates. Recurring payments therefore count twice (once
+  in the average, once as a commitment) - a deliberate, conservative
+  overstatement of near-term outflows. Pending invoices are not added as
+  separate probability-weighted collections, because their past payments are
+  already inside the average.
+- The dashboard's `kpis.projected_30d.value` is this same payload's day-30
+  balance (`days=30`), so the two screens can never disagree.
 - `series` has the same shape as the dashboard's `cashflow_series`: nine points,
   `actual` is `null` for months that have not happened. The three future points
   are read off the daily projection, so they reflect commitments and

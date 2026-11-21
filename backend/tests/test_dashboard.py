@@ -9,11 +9,11 @@ import datetime as dt
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.models import BusinessProfile, Transaction
+from app.services.forecast import build_forecast
 from app.services.kpi import (
-    _avg_daily_net_flow,
     _cashflow_series,
     _commitments_due,
     _current_balance,
@@ -77,61 +77,47 @@ def test_overdue_receivables_matches_the_invoices(dashboard):
     assert "2" in card["change"]
 
 
-def test_projected_30d_uses_net_cash_flow(client, seeded_db):
-    """projected = current cash + 30 days of average NET cash flow.
+def test_projected_30d_comes_from_the_forecast_engine(client, seeded_db):
+    """projected_30d is the forecast's day-30 balance, not its own formula.
 
-    The expected average is recomputed here straight from the table (a
-    separate code path from the service helper), so a wrong window or a
-    dropped sign shows up as a failure.
+    Stage 4.1 made the Overview card delegate to the same daily projection the
+    Cash Flow screen uses, so the two screens can never disagree.
     """
     body = client.get("/api/dashboard").json()
     projected = Decimal(str(body["kpis"]["projected_30d"]["value"]))
 
     current = _current_balance(seeded_db)
-    avg_daily = _avg_daily_net_flow(seeded_db)
-    expected = _projected_30d(seeded_db)
-
-    # Independent recomputation: 90-day window, signed amounts, divided by 90.
-    start = AS_OF_DATE - dt.timedelta(days=89)
-    total = seeded_db.scalar(
-        select(func.sum(Transaction.amount)).where(
-            Transaction.date >= start,
-            Transaction.date <= AS_OF_DATE,
-        )
-    )
-    manual_avg = (Decimal(str(total)) / 90).quantize(Decimal("0.01"))
+    day_30 = Decimal(str(build_forecast(seeded_db, days=30).daily_series[-1].balance))
 
     # Printed so the reviewer can see the numbers behind the KPI.
     print(
         "\nprojected_30d breakdown:"
-        f"\n  current_balance     = {current}"
-        f"\n  avg_daily_net_flow  = {avg_daily}"
-        f"\n  avg x 30            = {avg_daily * 30}"
-        f"\n  commitments_30d     = {_commitments_due(seeded_db)} (not subtracted)"
-        f"\n  projected_30d       = {expected}"
+        f"\n  current_balance          = {current}"
+        f"\n  forecast day-30 balance  = {day_30}"
+        f"\n  commitments_30d          = {_commitments_due(seeded_db)}"
+        f"\n  projected_30d            = {projected}"
     )
 
-    assert abs(avg_daily - manual_avg) <= Decimal("0.01")
-    # Tolerance of ₹1 covers 2-decimal rounding of the daily average.
-    assert abs(projected - (current + manual_avg * 30)) <= Decimal("1")
-    assert abs(projected - expected) <= Decimal("1")
-    assert projected > 0
+    assert projected == day_30
+    assert abs(projected - _projected_30d(seeded_db)) <= Decimal("0.01")
 
 
-def test_net_flow_times_30_explains_the_gap(seeded_db):
-    """avg_daily_net_flow x 30 reproduces projected_30d - current_balance."""
-    gap = _projected_30d(seeded_db) - _current_balance(seeded_db)
-    assert abs(gap - _avg_daily_net_flow(seeded_db) * 30) <= Decimal("1")
+def test_projected_30d_dips_below_the_safety_buffer(seeded_db):
+    """December's lump sums pull the 30-day projection under ₹1,50,000.
+
+    This is the honest picture the Stage 4.0 zero-outflow baseline hid.
+    """
+    assert _projected_30d(seeded_db) < _min_cash_buffer(seeded_db)
 
 
-def test_safe_to_spend_tone_is_green_with_seed(dashboard, seeded_db):
-    """Healthy cushion: safe_to_spend is well above 30% of the buffer."""
+def test_safe_to_spend_tone_is_coral_below_the_buffer(dashboard, seeded_db):
+    """With a real outflow baseline the cushion is gone, so the card is coral."""
     card = dashboard["kpis"]["safe_to_spend"]
-    buffer = _min_cash_buffer(seeded_db)
 
     assert card["value"] == float(_safe_to_spend(seeded_db))
-    assert Decimal(str(card["value"])) > buffer * Decimal("0.3")
-    assert card["tone"] == "green"
+    assert card["value"] < 0
+    assert card["tone"] == "coral"
+    assert dashboard["kpis"]["projected_30d"]["tone"] == "amber"
 
 
 def test_safe_to_spend_tone_is_coral_when_cash_runs_out(client, seeded_db):

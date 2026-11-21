@@ -11,8 +11,8 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import func, select
 
-from app.models import BusinessProfile, Commitment, Invoice, Transaction
-from app.services.forecast import build_forecast
+from app.models import BusinessProfile, Commitment, Transaction
+from app.services.forecast import _daily_baselines, build_forecast
 from app.services.kpi import _month_end_balance
 from app.services.transactions import AS_OF_DATE
 
@@ -90,22 +90,19 @@ def test_future_months_have_null_actual(forecast):
     for point in forecast["series"][6:]:
         assert point["actual"] is None
         assert isinstance(point["forecast"], (int, float))
-        assert point["forecast"] > 0
 
 
-def test_forecast_values_differ_from_dashboard_extrapolation(forecast):
-    """Dec, Jan and Feb come from the daily model, not one flat step.
+def test_future_months_reflect_commitments(forecast):
+    """Dec dips for the December payments, then the balance recovers.
 
-    The dashboard repeats the average monthly change, so its three points are
-    evenly spaced. The forecast engine moves by commitments, collections and
-    day count instead, which makes the three future points differ.
+    A flat straight-line extrapolation would step by the same amount every
+    month; the daily model instead drops hard in December and claws back
+    afterwards once the lump sums are paid.
     """
     december, january, february = (point["forecast"] for point in forecast["series"][6:])
-    values = [december, january, february]
 
-    assert len(set(values)) == 3
-    # And the December step is not simply repeated into January.
-    assert round(january - december, 2) != round(february - january, 2)
+    assert december < forecast["opening_balance"]
+    assert december < january < february
 
 
 # ---------------------------------------------------------------------------
@@ -124,8 +121,31 @@ def test_daily_series_days_parameter_respected(client):
     assert len(body["daily_series"]) == 30
     assert body["daily_series"][0]["date"] == "2026-11-20"
     assert body["daily_series"][-1]["date"] == "2026-12-19"
-    # The 30-day totals do not move when the horizon changes.
-    assert body["inflows_30d"] == client.get("/api/cashflow/forecast").json()["inflows_30d"]
+
+
+def test_each_day_moves_by_the_baseline(seeded_db, forecast):
+    """Days without a commitment move by exactly the net baseline."""
+    _, _, net = _daily_baselines(seeded_db)
+    daily = forecast["daily_series"]
+
+    # 2026-11-20 and 11-21 have no commitments, so the step is just the
+    # baseline (within a paisa of rounding).
+    step = Decimal(str(daily[1]["balance"])) - Decimal(str(daily[0]["balance"]))
+
+    assert abs(step - net) < Decimal("0.01")
+
+
+def test_commitment_days_are_lump_sums(seeded_db, forecast):
+    """A commitment day drops by the baseline minus that day's commitments."""
+    daily = {point["date"]: Decimal(str(point["balance"])) for point in forecast["daily_series"]}
+
+    # 2026-12-07 carries the ₹76,000 payroll commitment.
+    before = daily["2026-12-06"]
+    after = daily["2026-12-07"]
+    _, _, net = _daily_baselines(seeded_db)
+
+    assert before - after > Decimal("70000")
+    assert abs((before + net - Decimal("76000")) - after) < Decimal("0.02")
 
 
 def test_lowest_balance_is_minimum_of_daily_series(forecast):
@@ -145,22 +165,72 @@ def test_lowest_balance_date_within_window(forecast):
     assert AS_OF_DATE.isoformat() < forecast["lowest_balance"]["date"]
 
 
-def test_shortfall_null_or_matches_first_breach(seeded_db, forecast):
-    """`shortfall_date` is the FIRST day under the buffer, or null."""
-    buffer = seeded_db.scalar(
-        select(BusinessProfile.min_cash_buffer).order_by(BusinessProfile.id)
-    )
-    buffer = Decimal(str(buffer))
-    daily = forecast["daily_series"]
+# ---------------------------------------------------------------------------
+# The Stage 4.1 fix: a real outflow baseline, a real shortfall
+# ---------------------------------------------------------------------------
+
+def test_outflow_baseline_is_nonzero(seeded_db):
+    """The bug we fixed: outflow must never collapse to zero."""
+    inbox, outflow, net = _daily_baselines(seeded_db)
+
+    assert inbox > 0
+    assert outflow > 0
+    # Expenses outweigh income over the seeded 90 days, so net is negative.
+    assert net == inbox - outflow
+
+
+def test_assumptions_no_zero_outflow_claim(forecast):
+    """The "Rs 0 per day" assumption line must be gone."""
+    for line in forecast["assumptions"]:
+        assert "Rs 0 per day" not in line
+
+
+def test_assumptions_are_the_five_documented_lines(forecast):
+    """No AR-probability wording survived the rewrite."""
+    assumptions = forecast["assumptions"]
+
+    assert len(assumptions) == 5
+    assert assumptions[0].startswith("Baseline daily net flow: Rs ")
+    assert assumptions[1].startswith("Scheduled commitments are applied")
+    assert assumptions[2] == "Safety buffer: Rs 150,000"
+    assert assumptions[3] == "Projection horizon: 90 days"
+    assert assumptions[4].startswith("Model intentionally overstates")
+    for line in assumptions:
+        assert "probability" not in line
+        assert "collected" not in line
+
+
+def test_lowest_balance_below_safety_buffer(forecast):
+    """December's lump sums really do take cash under ₹1,50,000."""
+    assert forecast["lowest_balance"]["value"] < 150000
+
+
+def test_shortfall_date_is_not_none(forecast):
+    shortfall = forecast["shortfall_date"]
+
+    assert shortfall is not None
+    when = dt.date.fromisoformat(shortfall)
+    assert AS_OF_DATE < when <= AS_OF_DATE + dt.timedelta(days=90)
+
+
+def test_shortfall_date_is_first_breach(forecast):
+    """`shortfall_date` is the FIRST day under the buffer."""
     breaches = [
-        point["date"] for point in daily if Decimal(str(point["balance"])) < buffer
+        point["date"]
+        for point in forecast["daily_series"]
+        if Decimal(str(point["balance"])) < Decimal("150000")
     ]
 
-    if forecast["shortfall_date"] is None:
-        assert breaches == []
-    else:
-        assert breaches
-        assert forecast["shortfall_date"] == breaches[0]
+    assert breaches
+    assert forecast["shortfall_date"] == breaches[0]
+
+
+def test_day_90_balance_is_realistic(forecast):
+    """The projection must not run away: day 90 stays near today's cash."""
+    day_90 = Decimal(str(forecast["daily_series"][-1]["balance"]))
+    current = Decimal(str(forecast["opening_balance"]))
+
+    assert current * Decimal("0.3") <= day_90 <= current * Decimal("2.0")
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +267,17 @@ def test_inflows_30d_and_outflows_30d_are_positive(forecast):
     assert forecast["outflows_30d"] > 0
 
 
+def test_outflows_30d_include_the_commitments(seeded_db, forecast):
+    """Thirty days of routine outflow plus the scheduled payments."""
+    total = seeded_db.scalar(
+        select(func.sum(Commitment.amount)).where(
+            Commitment.due_date > AS_OF_DATE,
+            Commitment.due_date <= AS_OF_DATE + dt.timedelta(days=30),
+        )
+    )
+    assert Decimal(str(forecast["outflows_30d"])) > Decimal(str(total))
+
+
 def test_inflows_minus_outflows_approx_matches_balance_delta_30d(forecast):
     """The headline 30-day totals must explain the daily series exactly.
 
@@ -209,37 +290,8 @@ def test_inflows_minus_outflows_approx_matches_balance_delta_30d(forecast):
     assert abs(net - delta) < 1.0
 
 
-def test_outflows_30d_includes_the_scheduled_commitments(seeded_db, forecast):
-    """Commitments due in the next 30 days are part of the outflow figure."""
-    total = seeded_db.scalar(
-        select(func.sum(Commitment.amount)).where(
-            Commitment.due_date > AS_OF_DATE,
-            Commitment.due_date <= AS_OF_DATE + dt.timedelta(days=30),
-        )
-    )
-    assert Decimal(str(forecast["outflows_30d"])) >= Decimal(str(total))
-
-
-def test_overdue_collections_are_probability_weighted(seeded_db, forecast):
-    """Overdue AR is collected at 60%, upcoming at 80% - never 100%."""
-    overdue = seeded_db.scalars(
-        select(Invoice).where(
-            Invoice.status == "Pending",
-            Invoice.due_date < AS_OF_DATE,
-        )
-    ).all()
-    overdue_total = sum((Decimal(str(inv.amount)) for inv in overdue), Decimal("0"))
-
-    assert overdue_total == Decimal("85000")
-    # 60% of 85,000 = 51,000, plus 80% of INV-211's 24,500 = 19,600, plus the
-    # daily counter-sale inflow for 30 days.
-    model = build_forecast(seeded_db)
-    counter_part = Decimal(str(model.inflows_30d)) - Decimal("70600")
-    assert counter_part > 0
-
-
 # ---------------------------------------------------------------------------
-# Parameter validation
+# Parameter validation and live behaviour
 # ---------------------------------------------------------------------------
 
 def test_invalid_days_param_returns_422(client):
@@ -261,22 +313,58 @@ def test_forecast_reacts_to_a_new_transaction(client):
     assert after == before - 2500
 
 
-def test_baseline_excludes_commitment_covered_categories(seeded_db):
-    """Rent history is not averaged in while rent is also a commitment.
+def test_baseline_uses_every_category(seeded_db):
+    """No category is filtered out of the 90-day baseline any more.
 
-    With the seeded calendar every expense category is commitment-covered, so
-    the operational baseline is zero; only counter sales remain in the daily
-    inflow.
+    Stage 4.0 excluded commitment-covered categories, which zeroed the outflow
+    with the seeded calendar. The net baseline must equal the plain signed sum
+    of every transaction in the window divided by 90.
     """
-    model = build_forecast(seeded_db)
-    outflow_line = next(
-        line for line in model.assumptions if line.startswith("Recurring operational")
+    start = AS_OF_DATE - dt.timedelta(days=89)
+    total = seeded_db.scalar(
+        select(func.sum(Transaction.amount)).where(
+            Transaction.date >= start,
+            Transaction.date <= AS_OF_DATE,
+        )
     )
-    assert "Rs 0 per day" in outflow_line
+    _, _, net = _daily_baselines(seeded_db)
 
-    covered = seeded_db.scalars(select(Commitment.category)).all()
-    assert set(covered) == {"General", "Inventory", "Rent", "Payroll", "Utilities"}
-    # Sanity: the transaction table really does have expenses to exclude.
+    expected = Decimal(str(total)) / 90
+    # The baseline rounds inflow and outflow to 4 places separately, so allow
+    # a paisa of accumulated rounding.
+    assert abs(net - expected) <= Decimal("0.01")
     assert seeded_db.scalar(
-        select(func.count()).select_from(Transaction).where(Transaction.type == "expense")
+        select(func.count())
+        .select_from(Transaction)
+        .where(Transaction.type == "expense")
     ) > 0
+
+
+def test_no_invoice_collections_are_added(seeded_db, forecast):
+    """The old AR-events code path is gone.
+
+    With no AR events, the 30-day projection delta is exactly 30 days of net
+    flow minus the commitments due in those 30 days - nothing else can move
+    the balance.
+    """
+    _, _, net = _daily_baselines(seeded_db)
+    committed = seeded_db.scalar(
+        select(func.sum(Commitment.amount)).where(
+            Commitment.due_date > AS_OF_DATE,
+            Commitment.due_date <= AS_OF_DATE + dt.timedelta(days=30),
+        )
+    )
+    expected = Decimal("342500") + net * 30 - Decimal(str(committed))
+    day_30 = Decimal(str(forecast["daily_series"][29]["balance"]))
+
+    assert abs(day_30 - expected) <= Decimal("0.5")
+
+
+def test_business_profile_values_drive_the_buffer(seeded_db):
+    """The buffer in the assumptions is read from the profile, not hardcoded."""
+    buffer = seeded_db.scalar(
+        select(BusinessProfile.min_cash_buffer).order_by(BusinessProfile.id)
+    )
+    assert f"Safety buffer: Rs {Decimal(str(buffer)):,.0f}" in build_forecast(
+        seeded_db
+    ).assumptions

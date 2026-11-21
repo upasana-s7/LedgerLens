@@ -1,23 +1,26 @@
-"""Deterministic cash-flow forecast (Stage 4).
+"""Deterministic cash-flow forecast (Stage 4, revised in Stage 4.1).
 
-The model has three moving parts, all computed in plain Python:
+The model is deliberately simple and fully reproducible:
 
-1. A **daily baseline** from the last 90 days of real transactions: average
-   daily counter-sale inflow and average daily operational outflow.
-2. **Scheduled commitments** (rent, payroll, EMIs, vendor payables) dropped on
-   their exact due dates, straight from the payment calendar.
-3. **Open invoices**, collected with a fixed probability: 60% for ones already
-   overdue (assumed 10 days from the demo date), 80% for ones still upcoming
-   (assumed on their due date).
+1. One **net baseline** from the last 90 days of real transactions - every
+   rupee in, minus every rupee out, divided by 90. That single number already
+   contains the business's typical rent, payroll, EMI, utilities and vendor
+   payments, so the projection behaves like normal trading.
+2. **Scheduled commitments** are then subtracted as lump sums on their exact
+   due dates.
+
+That means near-term outflows are *intentionally overstated*: a recurring cost
+counts once inside the 90-day average and again as a scheduled commitment. We
+accept the conservative double-count because overstating outflows is the safe
+direction for a cash-flow warning, and because averaging only the categories
+that are *not* scheduled produced a meaningless "Rs 0 per day" outflow in
+Stage 4.0.
 
 No AI, no randomness and no wall-clock date: the demo date is
-`settings.AS_OF_DATE`, so running the endpoint twice always returns the same
-bytes. Gemini only ever explains these numbers (Stage 8).
-
-To stop a cost being counted twice, a category that appears as a future
-commitment is left out of the historical daily average - for example rent is
-not averaged in *and* subtracted as a commitment. Stage 5's what-if simulator
-reuses the same daily series, so the two screens can never disagree.
+`settings.AS_OF_DATE`, so two calls always return the same bytes. Pending
+invoices are not added as separate expected collections - their past payments
+are already inside the 90-day average. Stage 5's what-if simulator reuses the
+same daily series, so the two screens can never disagree.
 """
 
 import calendar
@@ -28,7 +31,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import BusinessProfile, Commitment, Invoice, Transaction
+from app.models import BusinessProfile, Commitment, Transaction
 from app.schemas.cashflow import (
     CommitmentItem,
     DailyPoint,
@@ -41,13 +44,8 @@ from app.services.transactions import AS_OF_DATE
 TWO_PLACES = Decimal("0.01")
 FOUR_PLACES = Decimal("0.0001")
 
-# How many days of history the daily averages look back over.
+# How many days of history the baseline looks back over.
 HISTORY_DAYS = 90
-
-# Fixed collection assumptions (no randomness, so the demo is reproducible).
-OVERDUE_COLLECTION_DAYS = 10
-OVERDUE_COLLECTION_PROB = Decimal("0.6")
-UPCOMING_COLLECTION_PROB = Decimal("0.8")
 
 # The monthly chart always covers the same nine months as the dashboard.
 HISTORY_MONTHS = [(2026, month) for month in range(6, 11)]  # Jun - Oct
@@ -106,84 +104,47 @@ def _balance_on(db: Session, opening: Decimal, when: dt.date) -> Decimal:
 
 
 # ---------------------------------------------------------------------------
-# Step 1: what the daily baseline should (and should not) include
+# The routine baseline
 # ---------------------------------------------------------------------------
 
-def _covered_categories(db: Session, window_end: dt.date) -> set[str]:
-    """Categories that appear as a commitment inside the forecast window.
-
-    Their history is left out of the daily averages, because the commitment
-    itself is already subtracted on its due date. Counting both would charge
-    rent twice.
-    """
-    rows = db.scalars(
-        select(Commitment.category).where(
-            Commitment.due_date > AS_OF_DATE,
-            Commitment.due_date <= window_end,
-        )
-    ).all()
-    return set(rows)
-
-
-def _daily_baselines(
-    db: Session, covered: set[str]
-) -> tuple[Decimal, Decimal]:
-    """(daily counter inflow, daily operational outflow) from the last 90 days.
+def _daily_baselines(db: Session) -> tuple[Decimal, Decimal, Decimal]:
+    """(routine inflow, routine outflow, net) per day over the last 90 days.
 
     The window is inclusive on both ends: AS_OF_DATE - 89 .. AS_OF_DATE.
-    Income linked to an invoice is excluded because that money is modelled
-    separately through the invoice collection probabilities.
+    Every income row counts as inflow and every expense row as outflow - no
+    category is filtered out, because the point of the baseline is ordinary
+    trading. Net is simply inflow minus outflow, so it is positive in a
+    healthy month and negative in a bad one.
     """
     start = AS_OF_DATE - dt.timedelta(days=HISTORY_DAYS - 1)
 
-    def _window(query):
-        return query.where(
-            Transaction.date >= start,
-            Transaction.date <= AS_OF_DATE,
+    def _total(kind: str) -> Decimal:
+        total = db.scalar(
+            select(func.sum(Transaction.amount)).where(
+                Transaction.date >= start,
+                Transaction.date <= AS_OF_DATE,
+                Transaction.type == kind,
+            )
         )
+        return Decimal(str(total or 0))
 
-    inflow_query = _window(
-        select(func.sum(Transaction.amount)).where(
-            Transaction.type == "income",
-            # Counter sales have no invoice behind them.
-            Transaction.invoice_id.is_(None),
-        )
-    )
-    outflow_query = _window(
-        select(func.sum(Transaction.amount)).where(Transaction.type == "expense")
-    )
-    # `notin_` is only added when there is something to exclude; an empty
-    # Python set would otherwise build a confusing "not in ()" clause.
-    if covered:
-        inflow_query = inflow_query.where(Transaction.category.notin_(covered))
-        outflow_query = outflow_query.where(Transaction.category.notin_(covered))
-
-    inflow_total = Decimal(str(db.scalar(inflow_query) or 0))
-    # Expenses are stored negative, so flipping the sign gives a positive
-    # "money out per day" number.
-    outflow_total = -Decimal(str(db.scalar(outflow_query) or 0))
-
-    return (
-        round_rate(inflow_total / HISTORY_DAYS),
-        round_rate(outflow_total / HISTORY_DAYS),
-    )
+    inflow = round_rate(_total("income") / HISTORY_DAYS)
+    # Expenses are stored negative, so flipping the sign gives "money out/day".
+    outflow = round_rate(-_total("expense") / HISTORY_DAYS)
+    net = round_rate(inflow - outflow)
+    return inflow, outflow, net
 
 
 # ---------------------------------------------------------------------------
-# Step 2: dated events (commitments out, expected collections in)
+# Scheduled commitments
 # ---------------------------------------------------------------------------
 
-def _events(
-    db: Session, window_end: dt.date
-) -> tuple[dict[dt.date, list[Decimal]], list[Commitment]]:
-    """Signed amounts per day, plus the commitments that feed them.
+def _commitments_in_window(db: Session, window_end: dt.date) -> list[Commitment]:
+    """Known payments due tomorrow .. `window_end`, sorted by date.
 
-    Commitments are negative (money leaving). Invoice collections are positive
-    and weighted by a fixed probability, because not every customer pays.
+    Today is excluded because today's spending is already in the cash balance.
     """
-    events: dict[dt.date, list[Decimal]] = defaultdict(list)
-
-    commitments = list(
+    return list(
         db.scalars(
             select(Commitment)
             .where(
@@ -193,54 +154,36 @@ def _events(
             .order_by(Commitment.due_date, Commitment.id)
         ).all()
     )
-    for commitment in commitments:
-        events[commitment.due_date].append(-round_money(commitment.amount))
-
-    for invoice in db.scalars(select(Invoice).where(Invoice.status == "Pending")).all():
-        if invoice.due_date < AS_OF_DATE:
-            # Already late: assume it lands 10 days from the demo date.
-            collection_date = AS_OF_DATE + dt.timedelta(days=OVERDUE_COLLECTION_DAYS)
-            probability = OVERDUE_COLLECTION_PROB
-        elif invoice.due_date <= window_end:
-            # Due inside the window: assume payment on the due date.
-            collection_date = invoice.due_date
-            probability = UPCOMING_COLLECTION_PROB
-        else:
-            # Falls due after the horizon - not part of this projection.
-            continue
-
-        if collection_date <= window_end:
-            events[collection_date].append(
-                round_money(round_money(invoice.amount) * probability)
-            )
-
-    return events, commitments
 
 
 # ---------------------------------------------------------------------------
-# Step 3: the day-by-day projection
+# The day-by-day projection
 # ---------------------------------------------------------------------------
 
 def _project(
     start_balance: Decimal,
-    inflow: Decimal,
-    outflow: Decimal,
-    events: dict[dt.date, list[Decimal]],
+    daily_net: Decimal,
+    commitments: list[Commitment],
     last_day: dt.date,
 ) -> list[tuple[dt.date, Decimal]]:
     """Walk forward one day at a time from AS_OF_DATE to `last_day`.
 
-    Every day applies the baseline (inflow minus outflow) and then any dated
-    events that fall on it. Returns (date, closing balance) pairs, so callers
-    can read either the whole daily series or a single month-end.
+    Each day first applies the routine net flow, then subtracts any commitment
+    falling due that day. Returns (date, closing balance) pairs, so callers can
+    read either the whole daily series or a single month-end.
     """
+    # Signed amounts keyed by the day they hit the bank.
+    lump_sums: dict[dt.date, list[Decimal]] = defaultdict(list)
+    for commitment in commitments:
+        lump_sums[commitment.due_date].append(-round_money(commitment.amount))
+
     balance = start_balance
     points: list[tuple[dt.date, Decimal]] = []
 
     day = AS_OF_DATE + dt.timedelta(days=1)
     while day <= last_day:
-        balance = balance + inflow - outflow
-        for amount in events.get(day, []):
+        balance += daily_net
+        for amount in lump_sums.get(day, []):
             balance += amount
         points.append((day, round_money(balance)))
         day += dt.timedelta(days=1)
@@ -249,7 +192,7 @@ def _project(
 
 
 # ---------------------------------------------------------------------------
-# Step 4: assembling the response
+# Assembling the response
 # ---------------------------------------------------------------------------
 
 def _monthly_series(
@@ -309,13 +252,14 @@ def _monthly_series(
 
 
 def build_forecast(db: Session, days: int = 90) -> ForecastResponse:
-    """Build the Cash Flow screen payload (see the module docstring for the model).
+    """Build the Cash Flow screen payload.
 
-    `days` is the projection horizon used for `daily_series`, `lowest_balance`
-    and `shortfall_date`. `inflows_30d` / `outflows_30d` always describe the
-    first 30 days, and the monthly chart always covers Jun 2026 - Feb 2027, so
-    the projection is also run out to the end of February to fill those three
-    future points from the same model.
+    The projection starts from today's cash and adds the 90-day average daily
+    net flow, then subtracts every scheduled commitment on its due date.
+    Because the historical average already includes recurring payments, the
+    near-term outflow is knowingly a little too high - the safe direction for
+    a cash-flow warning. The same curve fills the monthly chart, so the chart,
+    the daily series and the dashboard's 30-day projection cannot drift apart.
     """
     profile = _profile(db)
 
@@ -325,15 +269,14 @@ def build_forecast(db: Session, days: int = 90) -> ForecastResponse:
 
     window_end = AS_OF_DATE + dt.timedelta(days=days)
 
-    covered = _covered_categories(db, window_end)
-    inflow, outflow = _daily_baselines(db, covered)
-    events, commitments = _events(db, window_end)
+    inflow, outflow, daily_net = _daily_baselines(db)
+    commitments = _commitments_in_window(db, window_end)
 
     # Project to whichever is later: the requested horizon or the end of the
     # chart. The first `days` entries are always the daily series.
     chart_end = month_end(*FUTURE_MONTHS[-1])
     projection_end = max(window_end, chart_end)
-    curve = _project(current, inflow, outflow, events, projection_end)
+    curve = _project(current, daily_net, commitments, projection_end)
     balances = dict(curve)
 
     daily_series = [
@@ -360,45 +303,32 @@ def build_forecast(db: Session, days: int = 90) -> ForecastResponse:
         )
         shortfall_date = None
 
-    # The 30-day totals come from the same daily model, not from summing the
-    # monthly chart, so the three views always agree.
+    # The 30-day totals split the same model into its two halves: routine flow
+    # for 30 days, plus commitments falling due in those 30 days. Their
+    # difference always equals the change in balance over the same window.
     first_30_days = AS_OF_DATE + dt.timedelta(days=30)
-    collected_30d = sum(
-        (
-            amount
-            for day, amounts in events.items()
-            if day <= first_30_days
-            for amount in amounts
-            if amount > 0
-        ),
-        Decimal("0.00"),
-    )
     committed_30d = sum(
         (
-            -amount
-            for day, amounts in events.items()
-            if day <= first_30_days
-            for amount in amounts
-            if amount < 0
+            round_money(item.amount)
+            for item in commitments
+            if item.due_date <= first_30_days
         ),
         Decimal("0.00"),
     )
 
-    inflows_30d = round_money(inflow * 30 + collected_30d)
+    inflows_30d = round_money(inflow * 30)
     outflows_30d = round_money(outflow * 30 + committed_30d)
 
     assumptions = [
-        f"Overdue invoices collected {OVERDUE_COLLECTION_DAYS} days from "
-        f"{AS_OF_DATE.isoformat()} at {int(OVERDUE_COLLECTION_PROB * 100)}% probability",
-        "Upcoming invoices collected on due date at "
-        f"{int(UPCOMING_COLLECTION_PROB * 100)}% probability",
-        f"Recurring operational outflows: Rs {outflow:.0f} per day "
-        "(last 90 days average, excluding commitment-covered categories)",
-        f"Counter sales inflows: Rs {inflow:.0f} per day "
-        "(last 90 days average, invoice-linked sales excluded)",
-        f"Safety buffer: Rs {buffer:.0f}",
+        f"Baseline daily net flow: Rs {daily_net:,.0f} "
+        "(derived from 90-day historical average; already includes typical "
+        "rent, payroll, EMI, utilities and vendor payments)",
+        "Scheduled commitments are applied as lump-sum outflows on their due "
+        "dates (conservative upper bound on near-term outflows)",
+        f"Safety buffer: Rs {buffer:,.0f}",
         f"Projection horizon: {days} days",
-        "Commitments are taken from the scheduled payment calendar",
+        "Model intentionally overstates near-term outflows because historical "
+        "recurring payments are also averaged in the baseline",
     ]
 
     return ForecastResponse(
