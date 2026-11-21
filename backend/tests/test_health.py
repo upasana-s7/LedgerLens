@@ -27,27 +27,27 @@ def test_health_returns_exact_payload():
 
 def test_placeholder_route_returns_501():
     """Routes planned for later stages answer with a clear 501 + detail."""
-    response = client.get("/api/receivables")
+    response = client.get("/api/copilot/suggestions")
 
     assert response.status_code == 501
     assert response.json() == {
-        "detail": "Not implemented yet (planned for Stage 7)"
+        "detail": "Not implemented yet (planned for Stage 8)"
     }
 
 
 def test_placeholder_list_covers_all_staged_routes():
     """Every staged route exists and reports the 501 error shape."""
     # /api/dashboard and /api/transactions went live in Stage 3,
-    # /api/cashflow/forecast in Stage 4, /api/simulator/run in Stage 5 and
-    # /api/risk/alerts in Stage 6, so none of them answer 501 any more.
+    # /api/cashflow/forecast in Stage 4, /api/simulator/run in Stage 5,
+    # /api/risk/alerts in Stage 6, and /api/invoices + /api/receivables in
+    # Stage 7, so none of them answer 501 any more. What is left is the copilot
+    # (Stage 8) and invoice upload / confirm (Stage 9).
     staged_gets = [
-        ("/api/receivables", 7),
-        ("/api/invoices", 7),
         ("/api/copilot/suggestions", 8),
     ]
     staged_posts = [
-        ("/api/receivables/INV-204/mark-paid", 7),
-        ("/api/invoices/INV-204/mark-paid", 7),
+        ("/api/copilot/chat", 8),
+        ("/api/invoices/INV-204/confirm", 9),
     ]
 
     for url, stage in staged_gets:
@@ -63,6 +63,16 @@ def test_placeholder_list_covers_all_staged_routes():
         assert response.json()["detail"] == (
             f"Not implemented yet (planned for Stage {stage})"
         ), url
+
+    # The upload route needs a file part to get past request validation.
+    upload = client.post(
+        "/api/invoices/upload",
+        files={"file": ("bill.pdf", b"%PDF-1.4", "application/pdf")},
+    )
+    assert upload.status_code == 501
+    assert upload.json()["detail"] == (
+        "Not implemented yet (planned for Stage 9)"
+    )
 
 
 def test_cors_preflight_from_vite_dev_origin_is_allowed():

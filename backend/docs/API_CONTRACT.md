@@ -423,12 +423,17 @@ backend from `due_date` and the payment state — the client never computes it.
 ```json
 {
   "summary": {
-    "total_outstanding": 109500,
+    "total_outstanding": 109500.0,
     "outstanding_count": 3,
-    "overdue_total": 85000,
-    "collected_this_month": 184000
+    "overdue_total": 85000.0,
+    "collected_this_month": 184000.0
   },
-  "items": [ { "...": "Invoice" } ]
+  "items": [
+    { "id": "INV-211", "client": "Cafe Bloom", "due_date": "2026-11-28", "amount": 24500.0, "status": "Pending", "days_overdue": 0 },
+    { "id": "INV-206", "client": "Aarav Foods", "due_date": "2026-11-14", "amount": 48500.0, "status": "Paid", "days_overdue": 0 },
+    { "id": "INV-203", "client": "Aarav Foods", "due_date": "2026-11-10", "amount": 28500.0, "status": "Paid", "days_overdue": 0 },
+    { "...": "22 more invoices, newest issue_date first" }
+  ]
 }
 ```
 
@@ -493,11 +498,13 @@ same handler, so the Receivables screen and the Invoices screen agree.
 {
   "id": "INV-204",
   "status": "Paid",
-  "paid_at": "2026-11-20",
-  "outstanding_total": 57500,
-  "overdue_count": 0
+  "paid_at": "2026-11-19",
+  "outstanding_total": 57500.0,
+  "overdue_count": 1
 }
 ```
+
+*(overdue_count reflects remaining overdue invoices after mutation)*
 
 - Unknown id → **404**.
 - Already `Paid` → **409** (`{"detail": "Invoice INV-204 is already paid"}`).
@@ -512,15 +519,27 @@ same handler, so the Receivables screen and the Invoices screen agree.
 
 ```json
 {
-  "outstanding_total": 109500,
+  "outstanding_total": 109500.0,
   "overdue_count": 2,
-  "collection_progress_pct": 62,
-  "items": [ { "...": "Invoice, Paid excluded, overdue first" } ]
+  "collection_progress_pct": 63,
+  "aging_buckets": [
+    { "label": "Current", "count": 1, "amount": 24500.0 },
+    { "label": "1-30 days", "count": 2, "amount": 85000.0 },
+    { "label": "31-60 days", "count": 0, "amount": 0.0 },
+    { "label": "60+ days", "count": 0, "amount": 0.0 }
+  ],
+  "items": [
+    { "id": "INV-198", "client": "The Daily Table", "due_date": "2026-11-08", "amount": 33000.0, "status": "Overdue", "days_overdue": 11 },
+    { "id": "INV-204", "client": "Aarav Foods", "due_date": "2026-11-12", "amount": 52000.0, "status": "Overdue", "days_overdue": 7 },
+    { "id": "INV-211", "client": "Cafe Bloom", "due_date": "2026-11-28", "amount": 24500.0, "status": "Pending", "days_overdue": 0 }
+  ]
 }
 ```
 
 - `items` contains **unpaid invoices only**, sorted overdue-first, then by
-  `days_overdue` descending.
+  `due_date` ascending (so the longest-late invoice leads).
+- `aging_buckets` is always those four labels, in that order, and only counts
+  unpaid invoices: not yet due, 1–30 days late, 31–60, and 60+.
 - `collection_progress_pct` is an integer `0`–`100`: money collected ÷ money
   billed for the period. The backend computes it so the progress bar is
   consistent with the totals above it.
