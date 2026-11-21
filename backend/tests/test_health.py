@@ -27,20 +27,20 @@ def test_health_returns_exact_payload():
 
 def test_placeholder_route_returns_501():
     """Routes planned for later stages answer with a clear 501 + detail."""
-    response = client.get("/api/cashflow/forecast")
+    response = client.get("/api/risk/alerts")
 
     assert response.status_code == 501
     assert response.json() == {
-        "detail": "Not implemented yet (planned for Stage 4)"
+        "detail": "Not implemented yet (planned for Stage 6)"
     }
 
 
 def test_placeholder_list_covers_all_staged_routes():
     """Every staged route exists and reports the 501 error shape."""
-    # /api/dashboard and /api/transactions went live in Stage 3, so they are
-    # no longer expected to answer 501.
+    # /api/dashboard and /api/transactions went live in Stage 3, and
+    # /api/cashflow/forecast went live in Stage 4, so none of them are
+    # expected to answer 501 any more.
     staged_gets = [
-        ("/api/cashflow/forecast", 4),
         ("/api/risk/alerts", 6),
         ("/api/receivables", 7),
         ("/api/invoices", 7),

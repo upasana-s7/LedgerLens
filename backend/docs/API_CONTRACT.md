@@ -222,32 +222,55 @@ response.
 
 ### `GET /api/cashflow/forecast?days=90` — Stage 4
 
+`days` accepts `30`–`180` (default `90`); anything outside that returns **422**.
+
 ```json
 {
   "opening_balance": 342500,
-  "inflows_30d": 124000,
+  "inflows_30d": 181265.33,
   "outflows_30d": 248500,
   "series": [
     { "month": "Jun", "month_iso": "2026-06", "actual": 310000, "forecast": 310000 },
-    { "month": "Dec", "month_iso": "2026-12", "actual": null,   "forecast": 298000 }
+    { "month": "Nov", "month_iso": "2026-11", "actual": 342500, "forecast": 342500 },
+    { "month": "Dec", "month_iso": "2026-12", "actual": null,   "forecast": 289531.46 },
+    { "month": "Feb", "month_iso": "2027-02", "actual": null,   "forecast": 507173.28 }
+  ],
+  "daily_series": [
+    { "date": "2026-11-20", "balance": 346188.84 },
+    { "date": "2027-02-17", "balance": 466596 }
   ],
   "range_label": "Jun 2026 — Feb 2027",
   "commitments": [
     { "label": "Monthly rent", "amount": 22000, "date": "2026-12-01" }
   ],
   "assumptions": ["string"],
-  "lowest_balance": { "value": 148000, "date": "2027-01-31" },
+  "lowest_balance": { "value": 263999.2, "date": "2026-12-07" },
   "shortfall_date": null,
   "is_sample_data": true
 }
 ```
 
+*(Forecast model: historical 90-day averages + scheduled commitments + probability-weighted AR collections. Values shown are illustrative from the seeded dataset.)*
+
+- `opening_balance` is cash at the **start of the projection** (today), the same
+  figure the dashboard shows as available cash — not the pre-history opening
+  balance.
 - `outflows_30d` is a **positive number** describing money going out, even
   though transaction amounts for expenses are negative.
-- `shortfall_date` is `null` when no month is projected to go negative,
-  otherwise an ISO date.
+- `inflows_30d` / `outflows_30d` always cover the first 30 days of the
+  projection, whatever `days` was requested, and are built from the same daily
+  model as `daily_series`.
+- `series` has the same shape as the dashboard's `cashflow_series`: nine points,
+  `actual` is `null` for months that have not happened. The three future points
+  are read off the daily projection, so they reflect commitments and
+  collections rather than one flat step.
+- `daily_series` has exactly `days` points, starting `2026-11-20`.
+- `lowest_balance` is the lowest point of `daily_series` (ties go to the earlier
+  date). `shortfall_date` is the **first** day whose balance drops below the
+  ₹1,50,000 safety buffer, or `null` when the buffer is never breached.
 - `commitments` are known upcoming payments (rent, payroll, loan EMIs) that
-  the forecast already accounts for. `amount` is positive.
+  the forecast already accounts for. `amount` is positive; the list is sorted by
+  date.
 - `assumptions` are short, human-readable lines shown under the chart.
 
 ---

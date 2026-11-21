@@ -1,16 +1,27 @@
 """Cash-flow forecast router.
 
-The forecast engine arrives in Stage 4 (deterministic Python + Pandas).
+All the arithmetic lives in `app/services/forecast.py`; this route only
+validates the horizon and wires the database session in.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
-from app.routers import not_implemented
+from app.core.database import get_db
+from app.schemas.cashflow import ForecastResponse
+from app.services.forecast import build_forecast
 
 router = APIRouter(tags=["Cash Flow"])
 
 
-@router.get("/cashflow/forecast")
-def get_forecast(days: int = 90) -> dict:
+@router.get("/cashflow/forecast", response_model=ForecastResponse)
+def get_forecast(
+    days: int = Query(90, ge=30, le=180, description="Projection horizon in days"),
+    db: Session = Depends(get_db),
+) -> ForecastResponse:
     """Balance history + forward projection, commitments and assumptions."""
-    raise not_implemented(4)
+    try:
+        return build_forecast(db, days=days)
+    except ValueError as exc:
+        # Raised when the database has no business profile to forecast from.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
