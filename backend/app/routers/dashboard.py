@@ -1,16 +1,20 @@
 """Dashboard router - headline KPIs, cash-flow chart, AI CFO card, risks.
 
-Logic arrives in Stage 3. See docs/API_CONTRACT.md for the response shape.
+All numbers are computed in `app/services/kpi.py`; this route just wires the
+database session in and returns the response model.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
-from app.routers import not_implemented
+from app.core.database import get_db
+from app.schemas.dashboard import DashboardResponse
+from app.services.kpi import build_dashboard
 
 router = APIRouter(tags=["Dashboard"])
 
 
-@router.get("/dashboard")
-def get_dashboard() -> dict:
+@router.get("/dashboard", response_model=DashboardResponse)
+def get_dashboard(db: Session = Depends(get_db)) -> DashboardResponse:
     """KPIs + cash-flow series + insight + AI CFO summary + recent activity."""
-    raise not_implemented(3)
+    return build_dashboard(db)
