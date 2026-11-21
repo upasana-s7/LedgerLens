@@ -45,11 +45,6 @@ const initialTransactions = [
   { id: "TXN-1044", name: "Electricity & utilities", category: "Utilities", date: "15 Nov 2026", amount: -6800, type: "expense" },
 ];
 
-const initialInvoices = [
-  { id: "INV-204", client: "Aarav Foods", due: "12 Nov 2026", amount: 52000, status: "Overdue" },
-  { id: "INV-198", client: "The Daily Table", due: "08 Nov 2026", amount: 33000, status: "Overdue" },
-  { id: "INV-211", client: "Cafe Bloom", due: "28 Nov 2026", amount: 24500, status: "Pending" },
-];
 
 const money = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
 const compactMoney = (value: number) => value >= 100000 ? `₹${(value / 100000).toFixed(1)}L` : `₹${Math.round(value / 1000)}k`;
@@ -284,7 +279,7 @@ function Simulator() {
     <div className="simulator-layout"><SectionCard title="Build your scenario" subtitle="Adjust the assumptions to explore a possible decision">
       <div className="scenario-block"><div className="scenario-label"><div><span className="scenario-number">01</span><strong>New inventory purchase</strong></div><strong>{money(purchase)}</strong></div><input className="range-input" type="range" min="10000" max="200000" step="5000" value={purchase} onChange={e => { setPurchase(Number(e.target.value)); setResult(null); }} /><div className="range-labels"><span>₹10,000</span><span>₹2,00,000</span></div></div>
       <div className="scenario-block"><div className="scenario-label"><div><span className="scenario-number">02</span><strong>Expected revenue uplift</strong></div><strong>{revenue}%</strong></div><input className="range-input" type="range" min="0" max="40" step="1" value={revenue} onChange={e => { setRevenue(Number(e.target.value)); setResult(null); }} /><div className="range-labels"><span>0%</span><span>40%</span></div></div>
-      <div className="scenario-summary"><div><span>Current 30-day projected balance</span><strong>{result ? money(result.base_balance) : "Fetched when you run"}</strong></div><div><span>Scenario cost</span><strong className="amount-negative">−{money(purchase)}</strong></div><div><span>Estimated additional revenue</span><strong className="amount-positive">+{money(result?.additional_revenue ?? 0)}</strong></div></div>
+      <div className="scenario-summary"><div><span>Current 30-day projected balance</span><strong>{result ? money(result.base_balance) : "Fetched when you run"}</strong></div><div><span>Scenario cost</span><strong className="amount-negative">−{money(purchase)}</strong></div><div><span>Estimated additional revenue</span><strong className="amount-positive">+{money(result?.additional_revenue ?? (purchase * revenue / 100))}</strong></div></div>
       <button className="button button-primary full-button" disabled={loading} onClick={() => void run()}><Sparkles size={16} /> {loading ? "Calculating…" : "Run this scenario"}</button>
       {error && <div className="inline-note"><AlertCircle size={15} /> {error}</div>}
     </SectionCard>
