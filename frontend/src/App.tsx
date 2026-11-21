@@ -259,7 +259,6 @@ function AddTransaction({ onAdd, onCancel }: { onAdd: (t: { name: string; amount
     </div>
     {forecast && <div className="inline-note"><AlertCircle size={15} /> {forecast.is_sample_data ? "This forecast uses fictional Bloom & Bean demo data." : "This forecast uses connected workspace data."} Values are estimates, not guaranteed future balances.</div>}
   </div>;
-}l the financial engine is connected.</div></div>;
 }
 
 function Simulator() {
