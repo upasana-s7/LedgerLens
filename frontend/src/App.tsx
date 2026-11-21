@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { createTransaction, getDashboard, getTransactions, uploadTransactions, type DashboardResponse, type Transaction } from "./api/client";
+import { createTransaction, getCashFlowForecast, getDashboard, getTransactions, uploadTransactions, type CashFlowForecastResponse, type DashboardResponse, type Transaction } from "./api/client";
 import {
   Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Bell,
   CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Compass,
@@ -225,11 +225,41 @@ function AddTransaction({ onAdd, onCancel }: { onAdd: (t: { name: string; amount
     catch (error) { toast.error(error instanceof Error ? error.message : "Could not save transaction"); }
     finally { setSaving(false); }
   };
-  return <SectionCard title="New transaction" subtitle="Add a transaction to your workspace"><div className="form-grid"><label>Description<input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Customer payment" /></label><label>Amount (₹)<input type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)} placeholder="25000" /></label><label>Type<select value={type} onChange={e => { const next = e.target.value as "income" | "expense"; setType(next); setCategory(next === "income" ? "Sales" : "General"); }}><option value="income">Income</option><option value="expense">Expense</option></select></label><label>Category<select value={category} onChange={e => setCategory(e.target.value)}>{["Sales", "Inventory", "Rent", "Utilities", "Payroll", "General"].map(option => <option key={option} value={option}>{option}</option>)}</select></label></div><div className="form-actions"><button className="button button-outline" onClick={onCancel}>Cancel</button><button className="button button-primary" disabled={saving || !name.trim() || Number(amount) <= 0} onClick={() => void save()}>{saving ? "Saving..." : "Save transaction"}</button></div></SectionCard>;
-}
-
-function CashFlow() {
-  return <div className="page-stack"><PageIntro title="Cash flow" description="See where your money is going — and where it may take you." /><div className="metrics-grid compact-metrics"><MetricCard label="Opening balance" value="₹3,42,500" note="Current demo balance" icon={Wallet} /><MetricCard label="Expected inflows" value="₹1,24,000" note="Next 30 days" icon={TrendingUp} tone="sage" /><MetricCard label="Expected outflows" value="₹2,48,500" note="Next 30 days" icon={TrendingDown} tone="amber" /></div><SectionCard title="Balance forecast" subtitle="Historical balance and illustrative projection"><div className="chart-legend"><span><i className="legend-dot actual-dot" /> Actual</span><span><i className="legend-line" /> Forecast</span></div><div className="chart-main cashflow-detail-chart"><CashFlowChart detailed /></div></SectionCard><div className="two-col"><SectionCard title="Upcoming commitments" subtitle="Planned cash outflows"><div className="commitment-row"><span>Monthly rent</span><strong>₹22,000</strong><small>01 Dec</small></div><div className="commitment-row"><span>Inventory restock</span><strong>₹48,000</strong><small>05 Dec</small></div><div className="commitment-row"><span>Payroll</span><strong>₹76,000</strong><small>07 Dec</small></div></SectionCard><SectionCard title="Forecast assumptions" subtitle="What shapes this projection"><ul className="assumption-list"><li>Recent average sales and expenses</li><li>Recurring rent and payroll commitments</li><li>Expected collection of open invoices</li><li>Seasonal inventory purchase estimate</li></ul></SectionCard></div><div className="inline-note"><AlertCircle size={15} /> Forecast values are illustrative until the financial engine is connected.</div></div>;
+  return <SectionCard title="New transaction" subtitle="Add a transaction to your workspace"><div className="form-grid"><label>Description<input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Customer payment" /></label><label>Amount (₹)<input type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)} placeholder="25000" /></label><label>Type<select value={type} onChange={e => { const next = e.target.value as "income" | "expense"; setType(next); setCategory(next === "income" ? "Sales" : "General"); }}><option value="income">Income</option><option value="expense">Expense</option></select></label><label>Category<select value={category} onChange={e => setCategory(e.target.value)}>{["Sales", "Inventory", "Rent", "Utilities", "Payroll", "General"].map(option => <option key={option} value={option}>{option}</option>)}</select></label></div><div className="form-actions"><button className="button button-outline" onClick={onCancel}>Cancel</button><button className="button button-primary" disabled={saving || !name.trim() || Number(amount) <= 0} onClick={() => void save()}>{saving ? "Saving..." : "function CashFlow() {
+  const [forecast, setForecast] = useState<CashFlowForecastResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    getCashFlowForecast(90).then(setForecast).catch((reason: unknown) => {
+      const message = reason instanceof Error ? reason.message : "Could not load the cash-flow forecast";
+      setError(message);
+      toast.error(`Cash-flow forecast: ${message}`);
+    }).finally(() => setLoading(false));
+  }, []);
+  const formatDate = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return <div className="page-stack">
+    <PageIntro title="Cash flow" description="See where your money is going — and where it may take you." />
+    <div className="metrics-grid compact-metrics">
+      <MetricCard label="Opening balance" value={forecast ? money(forecast.opening_balance) : "—"} note="At the start of the forecast" icon={Wallet} />
+      <MetricCard label="Expected inflows" value={forecast ? money(forecast.inflows_30d) : "—"} note="Next 30 days" icon={TrendingUp} tone="sage" />
+      <MetricCard label="Expected outflows" value={forecast ? money(forecast.outflows_30d) : "—"} note="Next 30 days" icon={TrendingDown} tone="amber" />
+    </div>
+    <SectionCard title="Balance forecast" subtitle={forecast ? `Historical balance and projection · ${forecast.range_label}` : "Historical balance and projected cash position"}>
+      <div className="chart-legend"><span><i className="legend-dot actual-dot" /> Actual</span><span><i className="legend-line" /> Forecast</span></div>
+      <div className="chart-main cashflow-detail-chart">{forecast && <CashFlowChart detailed data={forecast.series} />}{loading && <div className="inline-note">Loading your cash-flow forecast…</div>}{error && !forecast && <div className="inline-note"><AlertCircle size={15} /> Forecast unavailable: {error}</div>}</div>
+      {forecast && <div className="chart-insight"><span className="insight-icon"><Lightbulb size={15} /></span><p>Lowest projected balance: <strong>{money(forecast.lowest_balance.value)}</strong> on {formatDate(forecast.lowest_balance.date)}.{forecast.shortfall_date ? ` The ₹1,50,000 safety buffer is first breached on ${formatDate(forecast.shortfall_date)}.` : " The forecast stays above the ₹1,50,000 safety buffer."}</p></div>}
+    </SectionCard>
+    <div className="two-col">
+      <SectionCard title="Upcoming commitments" subtitle="Planned cash outflows already included in the forecast">
+        {forecast?.commitments.length ? forecast.commitments.map((item, index) => <div className="commitment-row" key={`${item.label}-${item.date}-${index}`}><span>{item.label}</span><strong>{money(item.amount)}</strong><small>{formatDate(item.date)}</small></div>) : <div className="empty-state">{loading ? "Loading commitments…" : "No upcoming commitments returned."}</div>}
+      </SectionCard>
+      <SectionCard title="Forecast assumptions" subtitle="What shapes this projection">
+        {forecast?.assumptions.length ? <ul className="assumption-list">{forecast.assumptions.map((item, index) => <li key={index}>{item}</li>)}</ul> : <div className="empty-state">{loading ? "Loading assumptions…" : "Forecast assumptions are unavailable."}</div>}
+      </SectionCard>
+    </div>
+    {forecast && <div className="inline-note"><AlertCircle size={15} /> {forecast.is_sample_data ? "This forecast uses fictional Bloom & Bean demo data." : "This forecast uses connected workspace data."} Values are estimates, not guaranteed future balances.</div>}
+  </div>;
+}l the financial engine is connected.</div></div>;
 }
 
 function Simulator() {
