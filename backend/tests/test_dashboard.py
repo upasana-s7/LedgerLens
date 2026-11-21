@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from app.models import BusinessProfile, Transaction
 from app.services.forecast import build_forecast
+from app.services.risk import build_risk_response
 from app.services.kpi import (
     _cashflow_series,
     _commitments_due,
@@ -209,14 +210,16 @@ def test_insight_and_ai_cfo_use_real_numbers(dashboard):
     assert "₹" in ai_cfo["body"]
 
 
-def test_risk_items_and_tones(dashboard):
-    """Two risk lines, all tones inside the allowed design tokens."""
+def test_risk_items_and_tones(dashboard, seeded_db):
+    """Two risk lines, taken from the Risk Radar service (Stage 6)."""
     risks = dashboard["risk_items"]
+    alerts = build_risk_response(seeded_db).alerts
+
     assert len(risks) == 2
-    assert risks[0]["title"] == "Overdue invoices"
-    assert risks[0]["tone"] == "amber"  # there are overdue invoices
-    assert risks[1]["title"] == "Commitments due this month"
-    assert "₹2,48,500" in risks[1]["detail"]
+    for item, alert in zip(risks, alerts[:2]):
+        assert item["title"] == alert.title
+        assert item["tone"] == alert.tone
+        assert item["detail"] == alert.subtitle
 
     for risk in risks:
         assert risk["tone"] in {"coral", "amber", "sage"}

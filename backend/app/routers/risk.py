@@ -1,16 +1,23 @@
 """Cash-flow risk radar router.
 
-Alert rules arrive in Stage 6: deterministic thresholds, no AI guessing.
+Six deterministic rules live in `app.services.risk`; this router only wires
+them to HTTP.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
-from app.routers import not_implemented
+from app.core.database import get_db
+from app.schemas.risk import RiskResponse
+from app.services.risk import build_risk_response
 
 router = APIRouter(tags=["Risk"])
 
 
-@router.get("/risk/alerts")
-def get_alerts() -> dict:
+@router.get("/risk/alerts", response_model=RiskResponse)
+def get_alerts(db: Session = Depends(get_db)) -> RiskResponse:
     """List risk alerts (high / medium / low) with their evidence."""
-    raise not_implemented(6)
+    try:
+        return build_risk_response(db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -116,7 +116,16 @@ cash-flow chart, the AI CFO card, risk highlights and recent activity.
     "source": "rules|gemini"
   },
   "risk_items": [
-    { "tone": "coral|amber|sage", "title": "string", "detail": "string" }
+    {
+      "tone": "coral",
+      "title": "Projected cash buffer breach",
+      "detail": "Forecast dips below Rs 150,000 on 2026-12-07"
+    },
+    {
+      "tone": "coral",
+      "title": "Overdue customer invoices",
+      "detail": "2 invoice(s) past due"
+    }
   ],
   "recent_transactions": [ { "...": "Transaction, 4 items" } ]
 }
@@ -525,25 +534,108 @@ same handler, so the Receivables screen and the Invoices screen agree.
 ```json
 {
   "summary": {
-    "attention_count": 2,
+    "attention_count": 5,
     "note": "Plus 1 planning consideration",
     "tag": "REVIEW RECOMMENDED"
   },
   "alerts": [
     {
       "id": "RISK-1",
-      "severity": "high|medium|low",
-      "tone": "coral|amber|sage",
+      "severity": "high",
+      "tone": "coral",
+      "title": "Projected cash buffer breach",
+      "subtitle": "Forecast dips below Rs 150,000 on 2026-12-07",
+      "metric": "Lowest: Rs 129,296",
+      "body": "The 30-day forecast shows your balance falling below the Rs 150,000 safety buffer on 2026-12-07. The bottom point is Rs 129,296 on 2026-12-18. Reducing upcoming outflows or accelerating collections will close the gap.",
+      "impact_label": "Buffer shortfall",
+      "impact_value": "Rs 20,704 below floor",
+      "action_label": "Review upcoming commitments",
+      "evidence": [
+        { "kind": "commitment", "id": "FreshKart payable", "label": "FreshKart payable · Rs 41,000 on 2026-11-28" },
+        { "kind": "commitment", "id": "Packaging supplies", "label": "Packaging supplies · Rs 10,000 on 2026-11-30" },
+        { "kind": "commitment", "id": "Monthly rent", "label": "Monthly rent · Rs 22,000 on 2026-12-01" }
+      ]
+    },
+    {
+      "id": "RISK-2",
+      "severity": "high",
+      "tone": "coral",
       "title": "Overdue customer invoices",
-      "subtitle": "string",
-      "metric": "₹85,000",
-      "body": "string",
+      "subtitle": "2 invoice(s) past due",
+      "metric": "Rs 85,000",
+      "body": "You have Rs 85,000 sitting in 2 overdue invoice(s). The oldest is The Daily Table's INV-198, due 2026-11-08, now 11 days late. Chasing these protects the December buffer.",
       "impact_label": "Potential impact",
       "impact_value": "Cash collection delay",
       "action_label": "Review collection plan",
-      "evidence": [ { "kind": "invoice", "id": "INV-204" } ]
+      "evidence": [
+        { "kind": "invoice", "id": "INV-198", "label": "The Daily Table · Rs 33,000" },
+        { "kind": "invoice", "id": "INV-204", "label": "Aarav Foods · Rs 52,000" }
+      ]
+    },
+    {
+      "id": "RISK-3",
+      "severity": "medium",
+      "tone": "amber",
+      "title": "Commitment cluster ahead",
+      "subtitle": "Rs 164,500 due between 2026-12-01 and 2026-12-07",
+      "metric": "Rs 164,500",
+      "body": "4 payments totalling Rs 164,500 fall within 7 days, more than 40% of your current cash. Stagger what you can, or time collections to land before this window.",
+      "impact_label": "Concentrated outflows",
+      "impact_value": "Rs 164,500 in 7 days",
+      "action_label": "Stagger payments if possible",
+      "evidence": [
+        { "kind": "commitment", "id": "Monthly rent", "label": "Monthly rent · Rs 22,000 on 2026-12-01" },
+        { "kind": "commitment", "id": "Loan EMI", "label": "Loan EMI · Rs 18,500 on 2026-12-05" },
+        { "kind": "commitment", "id": "Inventory restock", "label": "Inventory restock · Rs 48,000 on 2026-12-05" },
+        { "kind": "commitment", "id": "Payroll", "label": "Payroll · Rs 76,000 on 2026-12-07" }
+      ]
+    },
+    {
+      "id": "RISK-4",
+      "severity": "medium",
+      "tone": "amber",
+      "title": "Unusually large expenses",
+      "subtitle": "1 transaction(s) above Rs 50,000",
+      "metric": "Rs 78,000",
+      "body": "1 expense(s) in the last 90 days were more than twice the typical amount for their category. The largest was Cold room compressor replacement at Rs 78,000 on 2026-08-21. Confirm these were planned and budgeted.",
+      "impact_label": "One-off cash impact",
+      "impact_value": "Rs 78,000 total",
+      "action_label": "Review one-off expenses",
+      "evidence": [
+        { "kind": "transaction", "id": "TXN-0968", "label": "Cold room compressor replacement · Rs 78,000 on 2026-08-21" }
+      ]
+    },
+    {
+      "id": "RISK-5",
+      "severity": "medium",
+      "tone": "amber",
+      "title": "Duplicate payment suspicion",
+      "subtitle": "1 pair(s) worth Rs 14,800",
+      "metric": "Rs 14,800",
+      "body": "Found 1 potential duplicate payment(s). The largest is Rs 14,800 paid on 2026-09-12 and 2026-09-13. Verify with the vendor before the next payment cycle.",
+      "impact_label": "Potential overpayment",
+      "impact_value": "Up to Rs 14,800",
+      "action_label": "Verify with vendor",
+      "evidence": [
+        { "kind": "transaction", "id": "TXN-0990", "label": "FreshKart Wholesale · Rs 14,800 on 2026-09-12" },
+        { "kind": "transaction", "id": "TXN-0991", "label": "FreshKart Wholesale · Rs 14,800 on 2026-09-13" }
+      ]
+    },
+    {
+      "id": "RISK-6",
+      "severity": "low",
+      "tone": "sage",
+      "title": "General spend rising",
+      "subtitle": "General up 188% month-over-month",
+      "metric": "+188%",
+      "body": "General costs are up 188% in the last 30 days compared to the prior 60-day average. At this rate, annual general spend will be Rs 907,858 higher than baseline.",
+      "impact_label": "Run-rate increase",
+      "impact_value": "+Rs 74,618 per month",
+      "action_label": "Review supplier pricing",
+      "evidence": []
     }
-  ]
+  ],
+  "risk_score": 100
 }
 ```
 

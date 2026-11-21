@@ -28,6 +28,7 @@ from app.schemas.dashboard import (
 )
 from app.schemas.transaction import TransactionResponse
 from app.services.forecast import build_forecast
+from app.services.risk import build_risk_response
 from app.services.transactions import AS_OF_DATE
 
 TWO_PLACES = Decimal("0.01")
@@ -340,30 +341,20 @@ def build_dashboard(db: Session) -> DashboardResponse:
         source="rules",
     )
 
-    if overdue_count:
-        overdue_detail = (
-            f"{_format_inr(overdue_total)} across {overdue_count} invoices. "
-            "Chase the oldest one first to protect the December buffer."
-        )
-    else:
-        overdue_detail = "No overdue invoices. Collections are on track."
-
-    commitments_heavy = commitments > projected * Decimal("0.5")
+    # The Overview shows the same top alerts the Risk Radar returns, so the two
+    # screens can never disagree about what is most urgent (Stage 6).
     risk_items = [
-        RiskItem(
-            tone="amber" if overdue_count else "sage",
-            title="Overdue invoices",
-            detail=overdue_detail,
-        ),
-        RiskItem(
-            tone="coral" if commitments_heavy else "sage",
-            title="Commitments due this month",
-            detail=(
-                f"{_format_inr(commitments)} of rent, payroll and vendor payments "
-                "are due within the next 30 days."
-            ),
-        ),
+        RiskItem(tone=alert.tone, title=alert.title, detail=alert.subtitle)
+        for alert in build_risk_response(db).alerts[:2]
     ]
+    while len(risk_items) < 2:
+        risk_items.append(
+            RiskItem(
+                tone="sage",
+                title="All clear",
+                detail="No risk items detected at this time.",
+            )
+        )
 
     recent = db.scalars(
         select(Transaction)
