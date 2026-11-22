@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode, type FormEvent } from "react";
-import { confirmInvoice, createTransaction, getCashFlowForecast, getCopilotSuggestions, getDashboard, getInvoices, getReceivables, getRiskAlerts, getTransactions, markInvoicePaid, runSimulator, sendCopilotMessage, uploadInvoice, uploadTransactions, getCurrentUser, login, logout, register, updateCurrentUser, type AuthUser, type CashFlowForecastResponse, type CopilotMessage, type DashboardResponse, type InvoiceUploadResponse, type Transaction } from "./api/client";
+import { confirmInvoice, createTransaction, getCashFlowForecast, getCopilotSuggestions, getDashboard, getInvoices, getReceivables, getRiskAlerts, getTransactions, markInvoicePaid, runSimulator, sendCopilotMessage, uploadInvoice, uploadTransactions, getCurrentUser, login, logout, register, updateCurrentUser, setUnauthorizedHandler, type AuthUser, type CashFlowForecastResponse, type CopilotMessage, type DashboardResponse, type InvoiceUploadResponse, type Transaction } from "./api/client";
 import {
   Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Bell,
   CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Compass,
@@ -497,6 +497,13 @@ export default function App() {
 
  useEffect(() => {
    let active = true;
+   const unregisterUnauthorizedHandler = setUnauthorizedHandler(() => {
+     if (!active) return;
+     setProfile(null);
+     setPage("Overview");
+     setDashboard(null);
+     toast.error("Your session has expired. Please sign in again.");
+   });
    getCurrentUser()
      .then(user => { if (active) setProfile({ name: user.name, email: user.email }); })
      .catch((error: unknown) => {
@@ -506,7 +513,7 @@ export default function App() {
        setProfile(null);
      })
      .finally(() => { if (active) setAuthChecking(false); });
-   return () => { active = false; };
+   return () => { active = false; unregisterUnauthorizedHandler(); };
  }, []);
 
  useEffect(() => {
