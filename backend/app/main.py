@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.database import init_db
 from app.seed.seed_data import seed_if_empty
 from app.routers import (
+    auth,
     cashflow,
     copilot,
     dashboard,
@@ -55,12 +56,17 @@ app = FastAPI(
 # CORS
 # ---------------------------------------------------------------------------
 # The React frontend runs on a different port, so the browser needs permission
-# to call this API. `allow_credentials=False` because we do not use cookies.
+# to call this API. Since Stage 11 the session lives in an HttpOnly cookie, so
+# `allow_credentials=True` is required for the browser to send it.
+#
+# Browsers reject `allow_origins=["*"]` together with credentials, so the
+# allowed origins stay an explicit list (Vite 5173/4173, plus the dev-only
+# 5174/5175 regex).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_origin_regex=settings.CORS_ORIGIN_REGEX,  # dev only: Vite 5174/5175...
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -68,7 +74,8 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Routes - everything lives under /api so the frontend has one base URL
 # ---------------------------------------------------------------------------
-app.include_router(health.router, prefix="/api")
+app.include_router(health.router, prefix="/api")  # public: no auth required
+app.include_router(auth.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(transactions.router, prefix="/api")
 app.include_router(cashflow.router, prefix="/api")

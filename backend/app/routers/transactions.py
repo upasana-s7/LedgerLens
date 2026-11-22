@@ -14,6 +14,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.security import get_current_user
+from app.models.user import User
 from app.schemas.transaction import (
     TransactionCreate,
     TransactionListResponse,
@@ -38,6 +40,7 @@ def list_transactions(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> TransactionListResponse:
     """Search / filter transactions, newest first, paginated."""
     try:
@@ -67,6 +70,7 @@ def list_transactions(
 def create_transaction(
     payload: TransactionCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> TransactionResponse:
     """Create one transaction. The backend sets the sign and the next TXN id."""
     try:
@@ -81,6 +85,7 @@ def create_transaction(
 def upload_transactions(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> UploadResult:
     """Import transactions from a CSV file (returns imported/skipped rows).
 

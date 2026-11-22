@@ -13,6 +13,7 @@ from app.models.risk_alert import RiskAlert
 from app.models.simulation_run import SimulationRun
 from app.models.transaction import Transaction
 from app.models.upload_batch import UploadBatch
+from app.models.user import User
 
 __all__ = [
     "BusinessProfile",
@@ -24,4 +25,5 @@ __all__ = [
     "SimulationRun",
     "Transaction",
     "UploadBatch",
+    "User",
 ]

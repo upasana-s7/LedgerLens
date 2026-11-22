@@ -10,6 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.security import get_current_user
+from app.models.user import User
 from app.schemas.copilot import ChatRequest, ChatResponse, SuggestionsResponse
 from app.services.copilot import build_chat_response, build_suggestions
 
@@ -20,7 +22,9 @@ router = APIRouter(tags=["Copilot"])
 
 @router.post("/copilot/chat", response_model=ChatResponse)
 def copilot_chat(
-    payload: ChatRequest, db: Session = Depends(get_db)
+    payload: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> ChatResponse:
     """Ask a question about the business; returns a reply plus citations.
 
@@ -35,6 +39,8 @@ def copilot_chat(
 
 
 @router.get("/copilot/suggestions", response_model=SuggestionsResponse)
-def copilot_suggestions() -> SuggestionsResponse:
+def copilot_suggestions(
+    current_user: User = Depends(get_current_user),
+) -> SuggestionsResponse:
     """Starter questions shown as chips and in the copilot panel."""
     return build_suggestions()

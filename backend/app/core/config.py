@@ -49,6 +49,15 @@ class Settings(BaseSettings):
     # data, so restarts are safe. Set to false to start with an empty DB.
     AUTO_SEED: bool = True
 
+    # --- Authentication (Stage 11) -----------------------------------------
+    # Signs the JWT stored in the HttpOnly `access_token` cookie. The default
+    # is for local development only: real deployments MUST set SECRET_KEY in
+    # `.env` (git-ignored) so cookies cannot be forged.
+    SECRET_KEY: str = "dev-secret-do-not-use-in-prod"
+
+    # How long a session lasts. 1440 minutes = 24 hours.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+
     # --- CORS --------------------------------------------------------------
     # The Vite dev server runs on 5173 and `vite preview` on 4173.
     CORS_ORIGINS: list[str] = [

@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.security import get_current_user
+from app.models.user import User
 from app.schemas.invoice import (
     InvoiceConfirmRequest,
     InvoiceConfirmResponse,
@@ -22,14 +24,19 @@ router = APIRouter(tags=["Invoices"])
 
 
 @router.get("/invoices", response_model=InvoiceListResponse)
-def list_invoices(db: Session = Depends(get_db)) -> InvoiceListResponse:
+def list_invoices(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> InvoiceListResponse:
     """All invoices plus the outstanding / overdue / collected summary."""
     return service.build_invoice_list(db)
 
 
 @router.post("/invoices/{invoice_id}/mark-paid", response_model=MarkPaidResponse)
 def mark_invoice_paid(
-    invoice_id: str, db: Session = Depends(get_db)
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> MarkPaidResponse:
     """Mark one invoice as Paid, record the income and return fresh totals."""
     try:
@@ -47,7 +54,9 @@ def mark_invoice_paid(
     "/invoices/upload", status_code=201, response_model=InvoiceUploadResponse
 )
 async def upload_invoice_endpoint(
-    file: UploadFile = File(...), db: Session = Depends(get_db)
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> InvoiceUploadResponse:
     """Extract fields from an invoice photo/PDF and save it as a Draft.
 
@@ -72,6 +81,7 @@ def confirm_invoice_endpoint(
     invoice_id: str,
     payload: InvoiceConfirmRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> InvoiceConfirmResponse:
     """Save the reviewed fields and move a Draft invoice to Pending."""
     try:

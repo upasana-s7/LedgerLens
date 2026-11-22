@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.security import get_current_user
+from app.models.user import User
 from app.schemas.cashflow import ForecastResponse
 from app.services.forecast import build_forecast
 
@@ -18,6 +20,7 @@ router = APIRouter(tags=["Cash Flow"])
 def get_forecast(
     days: int = Query(90, ge=30, le=180, description="Projection horizon in days"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> ForecastResponse:
     """Balance history + forward projection, commitments and assumptions."""
     try:

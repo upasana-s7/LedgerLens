@@ -731,3 +731,67 @@ environment config** — everything is mock data in `App.tsx`. To connect it:
 
 Until a stage ships, expect `501` from its routes. Build the screens against
 this contract and swap the mocks out one endpoint at a time.
+
+---
+
+## Authentication (Stage 11)
+
+Every financial endpoint now requires a signed-in session. Authentication only
+gates access — it does **not** partition data: all signed-in users share the
+same Bloom & Bean workspace, and no response shape changed in this stage.
+
+### How the session works
+
+- `POST /api/auth/register` and `POST /api/auth/login` return the user and set
+  an **HttpOnly cookie** named `access_token`:
+  `Path=/; HttpOnly; SameSite=lax; Max-Age=86400`.
+- The cookie holds a signed JWT (`sub` = user id, `exp` = 24 hours). Page
+  JavaScript can neither read nor set it, so the frontend must **not** try to
+  store a token itself — there is no token in any JSON response.
+- The browser attaches the cookie automatically. For `fetch` from another
+  origin (Vite on `:5173` → API on `:8000`) the request must opt in:
+  `fetch(url, { credentials: "include" })`, and `axios` needs
+  `withCredentials: true`. The API now answers with
+  `Access-Control-Allow-Credentials: true` for the allowed origins, and it
+  never uses `allow_origins=["*"]` (browsers reject that combination).
+- Signed out / expired / tampered cookie → **401**
+  `{"detail": "Not authenticated"}` (or `"Invalid or expired session"`).
+  The frontend should treat any 401 from a financial route as "show the login
+  screen".
+- `GET /api/health` stays public.
+
+### `POST /api/auth/register`
+
+Body: `{"name": "Asha Rao", "email": "asha@example.com", "password": "min 8 chars"}`
+
+`200` → `{"id": 1, "name": "Asha Rao", "email": "asha@example.com"}` + cookie.
+
+Errors: `400` — an account with that email already exists (`409`-free on
+purpose, so the register form has one message); `422` — invalid email or a
+password shorter than 8 characters.
+
+### `POST /api/auth/login`
+
+Body: `{"email": "asha@example.com", "password": "..."}`
+
+`200` → the same `UserResponse` as register + cookie.
+
+Errors: `401` `{"detail": "Incorrect email or password"}` — deliberately the
+same message whether the email or the password was wrong.
+
+### `GET /api/auth/me`
+
+No body. `200` → `UserResponse` for the cookie's user. `401` if not signed in.
+Use it on app load to restore the session after a refresh.
+
+### `PATCH /api/auth/me`
+
+Body (both optional): `{"name": "New Name", "email": "new@example.com"}`
+
+`200` → the updated `UserResponse`. `400` if the new email belongs to another
+account; `422` for an empty name.
+
+### `POST /api/auth/logout`
+
+No body. `200` → `{"detail": "Logged out"}` and the cookie is deleted. Safe to
+call when already signed out.

@@ -7,9 +7,16 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 
 # Settings / validation
-pydantic>=2.7.0
+pydantic[email]>=2.7.0
 pydantic-settings>=2.3.0
 python-dotenv>=1.0.1
+
+# Authentication (Stage 11): password hashing + signed session tokens.
+# bcrypt is pinned because passlib 1.7.4 reads `bcrypt.__about__`, which
+# bcrypt 4.1 removed (it warns/breaks on Python 3.11+).
+passlib[bcrypt]>=1.7.4
+bcrypt==4.0.1
+pyjwt>=2.8.0
 
 # Data layer (used from Stage 2 onwards)
 SQLAlchemy>=2.0.30
