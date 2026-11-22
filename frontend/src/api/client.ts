@@ -1,5 +1,13 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
 
+let unauthorizedHandler: (() => void) | null = null;
+
+/** Register the app-level handler for expired/invalid sessions on protected API calls. */
+export function setUnauthorizedHandler(handler: (() => void) | null): () => void {
+  unauthorizedHandler = handler;
+  return () => { if (unauthorizedHandler === handler) unauthorizedHandler = null; };
+}
+
 export class ApiError extends Error {
   status: number;
   detail: string;
@@ -15,6 +23,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const payload = response.status === 204 ? {} : await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail = typeof payload.detail === "string" ? payload.detail : `Request failed (${response.status})`;
+    if (response.status === 401 && !path.startsWith("/auth/")) unauthorizedHandler?.();
     throw new ApiError(response.status, detail);
   }
   return payload as T;
