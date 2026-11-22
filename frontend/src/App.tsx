@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode, type FormEvent } from "react";
-import { confirmInvoice, createTransaction, getCashFlowForecast, getCopilotSuggestions, getDashboard, getInvoices, getReceivables, getRiskAlerts, getTransactions, markInvoicePaid, runSimulator, sendCopilotMessage, uploadInvoice, uploadTransactions, type CashFlowForecastResponse, type CopilotMessage, type DashboardResponse, type InvoiceUploadResponse, type Transaction } from "./api/client";
+import { confirmInvoice, createTransaction, getCashFlowForecast, getCopilotSuggestions, getDashboard, getInvoices, getReceivables, getRiskAlerts, getTransactions, markInvoicePaid, runSimulator, sendCopilotMessage, uploadInvoice, uploadTransactions, getCurrentUser, login, logout, register, updateCurrentUser, type AuthUser, type CashFlowForecastResponse, type CopilotMessage, type DashboardResponse, type InvoiceUploadResponse, type Transaction } from "./api/client";
 import {
   Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Bell,
   CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Compass,
@@ -13,8 +13,7 @@ import {
 import { Toaster, toast } from "sonner";
 
 type Page = "Overview" | "Transactions" | "Cash Flow" | "What-If Simulator" | "Invoices" | "Risk Radar" | "AI Financial Copilot" | "Receivables" | "Account settings";
-type DemoProfile = { name: string; email: string };
-const DEMO_PROFILE_KEY = "ledgerlens_demo_profile";
+type DemoProfile = Pick<AuthUser, "name" | "email">;
 const initials = (name: string) => name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase() ?? "").join("") || "U";
 
 const navItems: { label: Page; icon: typeof Home }[] = [
@@ -85,7 +84,7 @@ function Header({ page, onMenu, profile, onSettings, onSignOut }: { page: Page; 
   const [profileOpen, setProfileOpen] = useState(false);
   return <header className="topbar">
     <div className="topbar-left"><button className="icon-button mobile-menu" onClick={onMenu}><Menu size={20} /></button><div className="breadcrumb">Workspace <ChevronRight size={14} /> <strong>{page}</strong></div></div>
-    <div className="topbar-actions"><div className="period-pill"><CalendarDays size={15} /><span>Nov 2026</span><ChevronDown size={14} /></div><button className="icon-button notification-button" onClick={() => toast("You're all caught up.")} aria-label="Notifications"><Bell size={18} /><i /></button><div className="profile-menu-wrap"><button className="top-profile-button" onClick={() => setProfileOpen(value => !value)} aria-label="Open account menu" aria-expanded={profileOpen}><span className="top-avatar">{initials(profile.name)}</span><ChevronDown size={14} /></button>{profileOpen && <div className="profile-dropdown"><div className="profile-dropdown-heading"><strong>{profile.name}</strong><span>{profile.email}</span><small>Demo account</small></div><button onClick={() => { setProfileOpen(false); onSettings(); }}><Settings size={15} /> Account settings</button><button onClick={() => { setProfileOpen(false); onSignOut(); }}><LogOut size={15} /> Sign out</button></div>}</div></div>
+    <div className="topbar-actions"><div className="period-pill"><CalendarDays size={15} /><span>Nov 2026</span><ChevronDown size={14} /></div><button className="icon-button notification-button" onClick={() => toast("You're all caught up.")} aria-label="Notifications"><Bell size={18} /><i /></button><div className="profile-menu-wrap"><button className="top-profile-button" onClick={() => setProfileOpen(value => !value)} aria-label="Open account menu" aria-expanded={profileOpen}><span className="top-avatar">{initials(profile.name)}</span><ChevronDown size={14} /></button>{profileOpen && <div className="profile-dropdown"><div className="profile-dropdown-heading"><strong>{profile.name}</strong><span>{profile.email}</span><small>Secure account</small></div><button onClick={() => { setProfileOpen(false); onSettings(); }}><Settings size={15} /> Account settings</button><button onClick={() => { setProfileOpen(false); onSignOut(); }}><LogOut size={15} /> Sign out</button></div>}</div></div>
   </header>;
 }
 
@@ -415,15 +414,74 @@ function Receivables() {
 }
 
 
-function AuthPage({ onAuthenticated }: { onAuthenticated: (profile: DemoProfile) => void }) {
- const [mode,setMode]=useState<"signin"|"signup">("signup"), [name,setName]=useState(""), [email,setEmail]=useState(""), [password,setPassword]=useState(""), [error,setError]=useState("");
- const submit=(event:FormEvent)=>{event.preventDefault();setError("");const clean=email.trim().toLowerCase();if(!/^\S+@\S+\.\S+$/.test(clean)){setError("Enter a valid email address.");return;}if(password.length<6){setError("Use at least 6 characters for the password.");return;}if(mode==="signup"&&!name.trim()){setError("Enter your name to create your demo account.");return;}let saved:DemoProfile|null=null;try{saved=JSON.parse(localStorage.getItem(DEMO_PROFILE_KEY)||"null") as DemoProfile|null;}catch{saved=null;}if(mode==="signin"){if(!saved||saved.email.toLowerCase()!==clean){setError("No demo account found for this email. Create an account first.");return;}onAuthenticated(saved);return;}const next={name:name.trim(),email:clean};localStorage.setItem(DEMO_PROFILE_KEY,JSON.stringify(next));onAuthenticated(next);};
- return <main className="auth-screen"><div className="auth-card"><Brand/><div className="auth-heading"><span className="eyebrow">WELCOME TO LEDGERLENS</span><h1>{mode==="signup"?"Create your account":"Welcome back"}</h1><p>{mode==="signup"?"A clearer view of your business starts here.":"Sign in to continue to your financial workspace."}</p></div><div className="auth-tabs"><button className={mode==="signup"?"selected":""} onClick={()=>{setMode("signup");setError("");}}>Create account</button><button className={mode==="signin"?"selected":""} onClick={()=>{setMode("signin");setError("");}}>Sign in</button></div><form className="auth-form" onSubmit={submit}>{mode==="signup"&&<label>Full name<input autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Your name" required/></label>}<label>Email address<input type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@gmail.com" required/></label><label>Password<input type="password" autoComplete={mode==="signup"?"new-password":"current-password"} value={password} onChange={e=>setPassword(e.target.value)} placeholder="At least 6 characters" minLength={6} required/></label>{error&&<p className="auth-error">{error}</p>}<button className="button button-primary full-button" type="submit">{mode==="signup"?"Create demo account":"Sign in"} <ArrowRight size={16}/></button></form><div className="auth-demo-note"><AlertCircle size={15}/><span>Demo authentication only. Your password is not stored or verified by a server. Use a non-sensitive test password.</span></div></div></main>;
+function AuthPage({ onAuthenticated }: { onAuthenticated: (profile: DemoProfile) => Promise<void> }) {
+  const [mode, setMode] = useState<"signin" | "signup">("signup");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    const cleanEmail = email.trim().toLowerCase();
+    if (!/^\\S+@\\S+\\.\\S+$/.test(cleanEmail)) { setError("Enter a valid email address."); return; }
+    if (password.length < 8) { setError("Your password must contain at least 8 characters."); return; }
+    if (mode === "signup" && !name.trim()) { setError("Enter your full name."); return; }
+    if (mode === "signup" && password !== confirmPassword) { setError("The passwords do not match."); return; }
+
+    setLoading(true);
+    try {
+      const user = mode === "signup"
+        ? await register({ name: name.trim(), email: cleanEmail, password })
+        : await login({ email: cleanEmail, password });
+      await onAuthenticated({ name: user.name, email: user.email });
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : "Authentication failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return <main className="auth-screen"><div className="auth-card"><Brand/>
+    <div className="auth-heading"><span className="eyebrow">WELCOME TO LEDGERLENS</span><h1>{mode === "signup" ? "Create your account" : "Welcome back"}</h1><p>{mode === "signup" ? "A clearer view of your business starts here." : "Sign in to continue to your financial workspace."}</p></div>
+    <div className="auth-tabs"><button type="button" className={mode === "signup" ? "selected" : ""} onClick={() => { setMode("signup"); setError(""); }}>Create account</button><button type="button" className={mode === "signin" ? "selected" : ""} onClick={() => { setMode("signin"); setError(""); }}>Sign in</button></div>
+    <form className="auth-form" onSubmit={submit}>
+      {mode === "signup" && <label>Full name<input autoComplete="name" value={name} onChange={e => setName(e.target.value)} placeholder="Your name" required/></label>}
+      <label>Email address<input type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@gmail.com" required/></label>
+      <label>Password<input type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 8 characters" minLength={8} required/></label>
+      {mode === "signup" && <label>Confirm password<input type="password" autoComplete="new-password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Re-enter your password" minLength={8} required/></label>}
+      {error && <p className="auth-error" role="alert">{error}</p>}
+      <button className="button button-primary full-button" type="submit" disabled={loading}>{loading ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"} <ArrowRight size={16}/></button>
+    </form>
+    <div className="auth-demo-note"><ShieldAlert size={15}/><span>Your account is authenticated by the LedgerLens server. Never reuse a password from another service.</span></div>
+  </div></main>;
 }
-function AccountSettings({profile,onSave}:{profile:DemoProfile;onSave:(profile:DemoProfile)=>void}) {
- const [name,setName]=useState(profile.name),[email,setEmail]=useState(profile.email),[saved,setSaved]=useState(false);
- const submit=(event:FormEvent)=>{event.preventDefault();if(!name.trim()||!/^\S+@\S+\.\S+$/.test(email.trim()))return;onSave({name:name.trim(),email:email.trim().toLowerCase()});setSaved(true);};
- return <div className="page-stack"><PageIntro title="Account settings" description="Manage the profile details shown in your LedgerLens workspace."/><SectionCard title="Profile details" subtitle="These details appear in your account menu and profile avatar"><form className="settings-form" onSubmit={submit}><div className="settings-profile-preview"><div className="profile-avatar settings-avatar">{initials(profile.name)}</div><div><strong>{profile.name}</strong><span>LedgerLens demo account</span></div></div><label>Full name<input value={name} onChange={e=>{setName(e.target.value);setSaved(false);}} required/></label><label>Email address<input type="email" value={email} onChange={e=>{setEmail(e.target.value);setSaved(false);}} required/></label><div className="form-actions"><button className="button button-primary" type="submit">Save changes</button></div>{saved&&<p className="settings-saved"><CheckCircle2 size={15}/> Profile updated.</p>}</form></SectionCard><div className="inline-note"><AlertCircle size={15}/> This is a frontend-only demo profile. It is saved in this browser and is not connected to secure backend authentication.</div></div>;
+
+function AccountSettings({ profile, onSave }: { profile: DemoProfile; onSave: (profile: DemoProfile) => Promise<void> }) {
+  const [name, setName] = useState(profile.name);
+  const [email, setEmail] = useState(profile.email);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault(); setError(""); setSaved(false);
+    if (!name.trim() || !/^\\S+@\\S+\\.\\S+$/.test(email.trim())) { setError("Enter a valid name and email address."); return; }
+    setLoading(true);
+    try { await onSave({ name: name.trim(), email: email.trim().toLowerCase() }); setSaved(true); }
+    catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not update your profile."); }
+    finally { setLoading(false); }
+  };
+  return <div className="page-stack"><PageIntro title="Account settings" description="Manage the details associated with your LedgerLens account."/><SectionCard title="Profile details" subtitle="Your name and email are linked to your authenticated account"><form className="settings-form" onSubmit={submit}>
+    <div className="settings-profile-preview"><div className="profile-avatar settings-avatar">{initials(profile.name)}</div><div><strong>{profile.name}</strong><span>LedgerLens account</span></div></div>
+    <label>Full name<input autoComplete="name" value={name} onChange={e => { setName(e.target.value); setSaved(false); }} required/></label>
+    <label>Email address<input type="email" autoComplete="email" value={email} onChange={e => { setEmail(e.target.value); setSaved(false); }} required/></label>
+    {error && <p className="auth-error" role="alert">{error}</p>}
+    <div className="form-actions"><button className="button button-primary" type="submit" disabled={loading}>{loading ? "Saving…" : "Save changes"}</button></div>
+    {saved && <p className="settings-saved"><CheckCircle2 size={15}/> Profile updated.</p>}
+  </form></SectionCard><div className="inline-note"><ShieldAlert size={15}/> Passwords and sessions are managed by the backend. Sign out when using a shared device.</div></div>;
 }
 
 function OverviewFooter() {
@@ -432,14 +490,61 @@ function OverviewFooter() {
 
 
 export default function App() {
- const [profile,setProfile]=useState<DemoProfile|null>(()=>{try{return JSON.parse(localStorage.getItem(DEMO_PROFILE_KEY)||"null") as DemoProfile|null;}catch{return null;}});
- const [page,setPage]=useState<Page>("Overview"),[menuOpen,setMenuOpen]=useState(false);
- const [transactions,setTransactions]=useState(initialTransactions),[dashboard,setDashboard]=useState<DashboardResponse|null>(null);
- useEffect(()=>{if(!profile)return;getDashboard().then(setDashboard).catch((error:unknown)=>toast.error("Backend connection: "+(error instanceof Error?error.message:"Could not load dashboard data")));},[profile]);
- const addTransaction=(t:Transaction)=>setTransactions(old=>[t,...old]);
- const saveProfile=(next:DemoProfile)=>{localStorage.setItem(DEMO_PROFILE_KEY,JSON.stringify(next));setProfile(next);toast.success("Account details updated.");};
- const signOut=()=>{localStorage.removeItem(DEMO_PROFILE_KEY);setProfile(null);setPage("Overview");setDashboard(null);toast.success("You have signed out.");};
- const pageContent=useMemo(()=>{if(!profile)return null;switch(page){case "Overview":return <Overview setPage={setPage} transactions={transactions} dashboard={dashboard}/>;case "Transactions":return <Transactions addTransaction={addTransaction}/>;case "Cash Flow":return <CashFlow/>;case "What-If Simulator":return <Simulator/>;case "Invoices":return <Invoices/>;case "Risk Radar":return <RiskRadar/>;case "AI Financial Copilot":return <Copilot/>;case "Receivables":return <Receivables/>;case "Account settings":return <AccountSettings profile={profile} onSave={saveProfile}/>;default:return null;}},[page,transactions,dashboard,profile]);
- if(!profile)return <><Toaster position="top-right" richColors/><AuthPage onAuthenticated={saveProfile}/></>;
- return <div className="app-shell"><Toaster position="top-right" richColors/><Sidebar page={page} setPage={setPage} open={menuOpen} close={()=>setMenuOpen(false)} profile={profile}/><main className="main-area"><Header page={page} profile={profile} onMenu={()=>setMenuOpen(true)} onSettings={()=>setPage("Account settings")} onSignOut={signOut}/><div className="page-container">{pageContent}<OverviewFooter/></div></main></div>;
+ const [profile, setProfile] = useState<DemoProfile | null>(null);
+ const [authChecking, setAuthChecking] = useState(true);
+ const [page, setPage] = useState<Page>("Overview"), [menuOpen, setMenuOpen] = useState(false);
+ const [transactions, setTransactions] = useState(initialTransactions), [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
+
+ useEffect(() => {
+   let active = true;
+   getCurrentUser()
+     .then(user => { if (active) setProfile({ name: user.name, email: user.email }); })
+     .catch((error: unknown) => {
+       if (!active) return;
+       const status = typeof error === "object" && error !== null && "status" in error ? Number((error as { status: unknown }).status) : 0;
+       if (status !== 401) toast.error(error instanceof Error ? error.message : "Could not restore your session.");
+       setProfile(null);
+     })
+     .finally(() => { if (active) setAuthChecking(false); });
+   return () => { active = false; };
+ }, []);
+
+ useEffect(() => {
+   if (!profile) { setDashboard(null); return; }
+   getDashboard().then(setDashboard).catch((error: unknown) => toast.error("Backend connection: " + (error instanceof Error ? error.message : "Could not load dashboard data")));
+ }, [profile]);
+
+ const addTransaction = (t: Transaction) => setTransactions(old => [t, ...old]);
+ const acceptAuthenticatedUser = async (next: DemoProfile) => {
+   setProfile(next); setPage("Overview"); toast.success("You're signed in.");
+ };
+ const saveProfile = async (next: DemoProfile) => {
+   const updated = await updateCurrentUser(next);
+   setProfile({ name: updated.name, email: updated.email });
+   toast.success("Account details updated.");
+ };
+ const signOut = async () => {
+   try { await logout(); }
+   catch (error) { toast.error(error instanceof Error ? error.message : "The server could not end the session."); }
+   finally { setProfile(null); setPage("Overview"); setDashboard(null); }
+ };
+ const pageContent = useMemo(() => {
+   if (!profile) return null;
+   switch (page) {
+     case "Overview": return <Overview setPage={setPage} transactions={transactions} dashboard={dashboard}/>;
+     case "Transactions": return <Transactions addTransaction={addTransaction}/>;
+     case "Cash Flow": return <CashFlow/>;
+     case "What-If Simulator": return <Simulator/>;
+     case "Invoices": return <Invoices/>;
+     case "Risk Radar": return <RiskRadar/>;
+     case "AI Financial Copilot": return <Copilot/>;
+     case "Receivables": return <Receivables/>;
+     case "Account settings": return <AccountSettings profile={profile} onSave={saveProfile}/>;
+     default: return null;
+   }
+ }, [page, transactions, dashboard, profile]);
+
+ if (authChecking) return <main className="auth-screen"><div className="auth-card auth-loading"><Brand/><p>Checking your secure session…</p></div></main>;
+ if (!profile) return <><Toaster position="top-right" richColors/><AuthPage onAuthenticated={acceptAuthenticatedUser}/></>;
+ return <div className="app-shell"><Toaster position="top-right" richColors/><Sidebar page={page} setPage={setPage} open={menuOpen} close={() => setMenuOpen(false)} profile={profile}/><main className="main-area"><Header page={page} profile={profile} onMenu={() => setMenuOpen(true)} onSettings={() => setPage("Account settings")} onSignOut={signOut}/><div className="page-container">{pageContent}<OverviewFooter/></div></main></div>;
 }
