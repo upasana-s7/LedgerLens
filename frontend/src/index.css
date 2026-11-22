@@ -422,3 +422,5 @@ body {
 .auth-demo-note{display:flex;align-items:flex-start;gap:9px;padding:11px;margin-top:19px;border:1px solid #eee7d8;border-radius:9px;background:#fcfaf4;color:#8b8069;font-size:10px;line-height:1.6}.auth-demo-note svg{flex:none;margin-top:1px}
 .settings-profile-preview{display:flex;align-items:center;gap:12px;padding-bottom:16px;border-bottom:1px solid #eff0eb}.settings-profile-preview>div:last-child{display:flex;flex-direction:column;gap:3px}.settings-profile-preview strong{color:#35453b;font-size:13px}.settings-profile-preview span{color:#87928a;font-size:11px}.settings-avatar{width:42px;height:42px;border-radius:13px}.settings-saved{display:flex;align-items:center;gap:6px;margin:0;color:#4c815e;font-size:12px}
 @media(max-width:600px){.auth-card{padding:25px 20px}.profile-dropdown{right:-5px}}
+
+.auth-loading{text-align:center}.auth-loading p{margin:22px 0 0;color:#77837b;font-size:13px}.auth-form button:disabled,.settings-form button:disabled{opacity:.65;cursor:wait}
