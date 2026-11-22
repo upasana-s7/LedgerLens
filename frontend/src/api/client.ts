@@ -10,14 +10,41 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   let response: Response;
-  try { response = await fetch(`${API_BASE_URL}/api${path}`, options); }
+  try { response = await fetch(`${API_BASE_URL}/api${path}`, { ...options, credentials: "include" }); }
   catch { throw new Error("Cannot reach the API. Start the backend and check VITE_API_BASE_URL."); }
-  const payload = await response.json().catch(() => ({}));
+  const payload = response.status === 204 ? {} : await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail = typeof payload.detail === "string" ? payload.detail : `Request failed (${response.status})`;
     throw new ApiError(response.status, detail);
   }
   return payload as T;
+}
+
+
+export interface AuthUser { id: string; name: string; email: string; }
+export interface AuthCredentials { email: string; password: string; }
+export interface RegisterInput extends AuthCredentials { name: string; }
+
+/**
+ * Authentication uses an HttpOnly, server-managed session cookie.
+ * The browser never reads or stores passwords or session tokens.
+ */
+export function register(input: RegisterInput): Promise<AuthUser> {
+  return request<AuthUser>("/auth/register", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+  });
+}
+export function login(input: AuthCredentials): Promise<AuthUser> {
+  return request<AuthUser>("/auth/login", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+  });
+}
+export function getCurrentUser(): Promise<AuthUser> { return request<AuthUser>("/auth/me"); }
+export function logout(): Promise<void> { return request<void>("/auth/logout", { method: "POST" }); }
+export function updateCurrentUser(input: { name: string; email: string }): Promise<AuthUser> {
+  return request<AuthUser>("/auth/me", {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+  });
 }
 
 export interface DashboardTransaction {
