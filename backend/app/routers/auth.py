@@ -7,9 +7,10 @@ HttpOnly, invisible to JavaScript).
 
 Cookie flags explained:
   httponly=True   -> JavaScript cannot read it (blocks token theft via XSS)
-  samesite="lax"  -> not sent on cross-site sub-requests (blocks most CSRF)
-  secure=False    -> allowed over plain http, which localhost dev uses.
-                     MUST become True behind HTTPS in production.
+  secure=True     -> only sent over HTTPS (production)
+  samesite        -> "lax" locally, so the cookie still works over plain http;
+                     "none" in production, which the browser requires when the
+                     frontend (Vercel) and API (Render) are different sites.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -37,12 +38,13 @@ COOKIE_MAX_AGE = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
 def _set_session_cookie(response: Response, user: User) -> None:
     """Sign a token for `user` and attach it to the response as a cookie."""
     token = create_access_token({"sub": str(user.id)})
+    is_prod = settings.ENVIRONMENT == "production"
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
         httponly=True,
-        samesite="lax",
-        secure=False,
+        samesite="none" if is_prod else "lax",
+        secure=is_prod,
         max_age=COOKIE_MAX_AGE,
     )
 

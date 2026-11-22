@@ -62,9 +62,16 @@ app = FastAPI(
 # Browsers reject `allow_origins=["*"]` together with credentials, so the
 # allowed origins stay an explicit list (Vite 5173/4173, plus the dev-only
 # 5174/5175 regex).
+#
+# In production the frontend is deployed separately (e.g. on Vercel), so its
+# public URL comes from FRONTEND_URL and is added to the list here.
+allowed_origins = list(settings.CORS_ORIGINS)
+if settings.FRONTEND_URL not in allowed_origins:
+    allowed_origins.append(settings.FRONTEND_URL)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=allowed_origins,
     allow_origin_regex=settings.CORS_ORIGIN_REGEX,  # dev only: Vite 5174/5175...
     allow_credentials=True,
     allow_methods=["*"],

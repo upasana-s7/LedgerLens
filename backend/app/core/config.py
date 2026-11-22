@@ -58,8 +58,19 @@ class Settings(BaseSettings):
     # How long a session lasts. 1440 minutes = 24 hours.
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
+    # --- Deployment (Stage 12) ---------------------------------------------
+    # "development" or "production". In production the session cookie is
+    # marked Secure and SameSite=None, because the frontend (Vercel) and the
+    # API (Render) live on different domains and the cookie must still be sent.
+    ENVIRONMENT: str = "development"
+
+    # Public URL of the deployed frontend. Added to the CORS allow-list, since
+    # it cannot be guessed from the localhost defaults below.
+    FRONTEND_URL: str = "http://localhost:5173"
+
     # --- CORS --------------------------------------------------------------
-    # The Vite dev server runs on 5173 and `vite preview` on 4173.
+    # FRONTEND_URL (above) is added to this list at startup. The defaults
+    # cover the Vite dev server on 5173 and `vite preview` on 4173.
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
