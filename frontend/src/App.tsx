@@ -427,7 +427,7 @@ function AuthPage({ onAuthenticated }: { onAuthenticated: (profile: DemoProfile)
     event.preventDefault();
     setError("");
     const cleanEmail = email.trim().toLowerCase();
-    if (!/^\\S+@\\S+\\.\\S+$/.test(cleanEmail)) { setError("Enter a valid email address."); return; }
+    if (!/^\S+@\S+\.\S+$/.test(cleanEmail)) { setError("Enter a valid email address."); return; }
     if (password.length < 8) { setError("Your password must contain at least 8 characters."); return; }
     if (mode === "signup" && !name.trim()) { setError("Enter your full name."); return; }
     if (mode === "signup" && password !== confirmPassword) { setError("The passwords do not match."); return; }
@@ -468,7 +468,7 @@ function AccountSettings({ profile, onSave }: { profile: DemoProfile; onSave: (p
   const [loading, setLoading] = useState(false);
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setError(""); setSaved(false);
-    if (!name.trim() || !/^\\S+@\\S+\\.\\S+$/.test(email.trim())) { setError("Enter a valid name and email address."); return; }
+    if (!name.trim() || !/^\S+@\S+\.\S+$/.test(email.trim())) { setError("Enter a valid name and email address."); return; }
     setLoading(true);
     try { await onSave({ name: name.trim(), email: email.trim().toLowerCase() }); setSaved(true); }
     catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not update your profile."); }
